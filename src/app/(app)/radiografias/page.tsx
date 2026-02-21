@@ -51,7 +51,7 @@ export default function RadiografiasGlobalPage() {
           return {
             ...rx,
             signed_url: urlData?.signedUrl ?? null,
-            paciente_nome: (rx.paciente as { nome: string } | null)?.nome ?? '',
+            paciente_nome: (rx.paciente as unknown as { nome: string } | null)?.nome ?? '',
           } as RxComPaciente
         })
       )

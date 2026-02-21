@@ -51,9 +51,9 @@ export default function HistoricoPage() {
       let resultado = (data ?? []).map((a) => ({
         id: a.id,
         paciente_id: a.paciente_id,
-        paciente_nome: (a.paciente as { nome: string } | null)?.nome ?? '',
+        paciente_nome: (a.paciente as unknown as { nome: string } | null)?.nome ?? '',
         data_atendimento: a.data_atendimento,
-        procedimento_nome: (a.procedimento as { nome: string } | null)?.nome ?? null,
+        procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
         descricao: a.descricao,
         valor_total: a.valor_total,
       }))

@@ -123,10 +123,10 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
         paciente_id: a.paciente_id,
         data_atendimento: a.data_atendimento,
         procedimento_id: a.procedimento_id,
-        procedimento_nome: (a.procedimento as { nome: string } | null)?.nome ?? null,
+        procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
         descricao: a.descricao,
         valor_total: a.valor_total,
-        dentista_nome: (a.dentista as { nome: string } | null)?.nome ?? null,
+        dentista_nome: (a.dentista as unknown as { nome: string } | null)?.nome ?? null,
         status_pagamento,
         total_radiografias: rxPorAtend[a.id] ?? 0,
       }
