@@ -1,0 +1,21 @@
+{
+  "/_not-found": "app/_not-found.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/page": "app/page.js",
+  "/(app)/financeiro/inadimplentes/page": "app/(app)/financeiro/inadimplentes/page.js",
+  "/(app)/financeiro/lancamento/page": "app/(app)/financeiro/lancamento/page.js",
+  "/(app)/financeiro/parcelas/page": "app/(app)/financeiro/parcelas/page.js",
+  "/(app)/financeiro/page": "app/(app)/financeiro/page.js",
+  "/(app)/configuracoes/page": "app/(app)/configuracoes/page.js",
+  "/(app)/configuracoes/procedimentos/page": "app/(app)/configuracoes/procedimentos/page.js",
+  "/(app)/pacientes/[id]/atendimento/[atendimentoId]/editar/page": "app/(app)/pacientes/[id]/atendimento/[atendimentoId]/editar/page.js",
+  "/(app)/historico/page": "app/(app)/historico/page.js",
+  "/(app)/pacientes/[id]/atendimento/[atendimentoId]/page": "app/(app)/pacientes/[id]/atendimento/[atendimentoId]/page.js",
+  "/(app)/pacientes/[id]/historico/page": "app/(app)/pacientes/[id]/historico/page.js",
+  "/(app)/pacientes/[id]/radiografias/page": "app/(app)/pacientes/[id]/radiografias/page.js",
+  "/(app)/pacientes/[id]/page": "app/(app)/pacientes/[id]/page.js",
+  "/(app)/pacientes/page": "app/(app)/pacientes/page.js",
+  "/(app)/radiografias/page": "app/(app)/radiografias/page.js",
+  "/(app)/pacientes/[id]/editar/page": "app/(app)/pacientes/[id]/editar/page.js",
+  "/(app)/pacientes/novo/page": "app/(app)/pacientes/novo/page.js"
+}

@@ -1,0 +1,97 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Safe area para notch e barra inferior do iOS ─────────────── */
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  .h-dvh {
+    height: 100dvh; /* dynamic viewport height — evita o bug do Safari */
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    /* Evita highlight azul em tap no iOS */
+    -webkit-tap-highlight-color: transparent;
+    /* Box-sizing global */
+    box-sizing: border-box;
+  }
+
+  html {
+    /* Evita zoom em inputs no iOS */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900;
+    /* Previne overscroll/bounce no iOS */
+    overscroll-behavior: none;
+  }
+
+  /* Remove aparência nativa de inputs de data no iOS */
+  input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* Remove setas de input number */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* Smooth scroll */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ── Animações ────────────────────────────────────────────────── */
+@layer utilities {
+  .animate-in {
+    animation: fadeIn 0.2s ease forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .slide-up {
+    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+}
