@@ -26,14 +26,24 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
-  const isPublicRoute = request.nextUrl.pathname === '/'
+  const pathname = request.nextUrl.pathname
 
-  if (!user && !isAuthRoute && !isPublicRoute) {
+  // Rotas públicas — não exigem autenticação
+  const isPublic =
+    pathname === '/' ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/icons') ||
+    pathname === '/manifest.json' ||
+    pathname === '/favicon.ico' ||
+    pathname === '/sw.js' ||
+    pathname === '/workbox-' // service worker chunks
+
+  if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && isAuthRoute) {
+  if (user && pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/pacientes', request.url))
   }
 
@@ -41,5 +51,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icons).*)'],
+  // Excluir arquivos estáticos e de build do middleware
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|workbox-.*\\.js|manifest\\.json|icons/).*)',
+  ],
 }
