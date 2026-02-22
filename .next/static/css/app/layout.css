@@ -536,6 +536,8 @@ input[type="number"]::-webkit-outer-spin-button,
   }
 input[type="number"] {
     -moz-appearance: textfield;
+    -webkit-appearance: textfield;
+            appearance: textfield;
   }
 /* Smooth scroll */
 html {
@@ -635,9 +637,6 @@ html {
 }
 .mb-4 {
   margin-bottom: 1rem;
-}
-.mb-6 {
-  margin-bottom: 1.5rem;
 }
 .mb-8 {
   margin-bottom: 2rem;
@@ -750,17 +749,11 @@ html {
 .h-\[76px\] {
   height: 76px;
 }
-.h-dvh {
-  height: 100dvh;
-}
 .h-full {
   height: 100%;
 }
 .max-h-full {
   max-height: 100%;
-}
-.min-h-dvh {
-  min-height: 100dvh;
 }
 .min-h-full {
   min-height: 100%;
@@ -889,6 +882,9 @@ html {
 .grid-cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .flex-col {
   flex-direction: column;
 }
@@ -928,6 +924,14 @@ html {
 .gap-4 {
   gap: 1rem;
 }
+.gap-6 {
+  gap: 1.5rem;
+}
+.space-y-1 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));
+}
 .space-y-2 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-y-reverse: 0;
   margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));
@@ -952,6 +956,15 @@ html {
   --tw-space-y-reverse: 0;
   margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
   margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
+}
+.divide-x > :not([hidden]) ~ :not([hidden]) {
+  --tw-divide-x-reverse: 0;
+  border-right-width: calc(1px * var(--tw-divide-x-reverse));
+  border-left-width: calc(1px * calc(1 - var(--tw-divide-x-reverse)));
+}
+.divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  --tw-divide-opacity: 1;
+  border-color: rgb(243 244 246 / var(--tw-divide-opacity, 1));
 }
 .self-stretch {
   align-self: stretch;
@@ -1001,8 +1014,14 @@ html {
 .border-b-2 {
   border-bottom-width: 2px;
 }
+.border-l {
+  border-left-width: 1px;
+}
 .border-t {
   border-top-width: 1px;
+}
+.border-dashed {
+  border-style: dashed;
 }
 .border-amber-100 {
   --tw-border-opacity: 1;
@@ -1154,6 +1173,10 @@ html {
 .bg-white\/30 {
   background-color: rgb(255 255 255 / 0.3);
 }
+.bg-yellow-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(254 252 232 / var(--tw-bg-opacity, 1));
+}
 .bg-gradient-to-t {
   background-image: linear-gradient(to top, var(--tw-gradient-stops));
 }
@@ -1207,6 +1230,10 @@ html {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
+.px-2\.5 {
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
 .px-3 {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
@@ -1227,6 +1254,10 @@ html {
   padding-top: 0.125rem;
   padding-bottom: 0.125rem;
 }
+.py-1 {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
 .py-1\.5 {
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
@@ -1246,6 +1277,10 @@ html {
 .py-2\.5 {
   padding-top: 0.625rem;
   padding-bottom: 0.625rem;
+}
+.py-20 {
+  padding-top: 5rem;
+  padding-bottom: 5rem;
 }
 .py-3 {
   padding-top: 0.75rem;
@@ -1325,9 +1360,13 @@ html {
   font-size: 1.5rem;
   line-height: 2rem;
 }
-.text-3xl {
-  font-size: 1.875rem;
-  line-height: 2.25rem;
+.text-4xl {
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+}
+.text-5xl {
+  font-size: 3rem;
+  line-height: 1;
 }
 .text-\[10px\] {
   font-size: 10px;
@@ -1460,6 +1499,10 @@ html {
   --tw-text-opacity: 1;
   color: rgb(17 24 39 / var(--tw-text-opacity, 1));
 }
+.text-green-700 {
+  --tw-text-opacity: 1;
+  color: rgb(21 128 61 / var(--tw-text-opacity, 1));
+}
 .text-indigo-500 {
   --tw-text-opacity: 1;
   color: rgb(99 102 241 / var(--tw-text-opacity, 1));
@@ -1498,6 +1541,10 @@ html {
 }
 .text-white\/80 {
   color: rgb(255 255 255 / 0.8);
+}
+.text-yellow-700 {
+  --tw-text-opacity: 1;
+  color: rgb(161 98 7 / var(--tw-text-opacity, 1));
 }
 .antialiased {
   -webkit-font-smoothing: antialiased;
@@ -1570,9 +1617,6 @@ html {
 }
 .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 1rem);
-  }
-.h-dvh {
-    height: 100dvh; /* dynamic viewport height — evita o bug do Safari */
   }
 .scrollbar-hide {
     -ms-overflow-style: none;
@@ -1680,6 +1724,10 @@ html {
 .active\:bg-black\/60:active {
   background-color: rgb(0 0 0 / 0.6);
 }
+.active\:bg-blue-50:active {
+  --tw-bg-opacity: 1;
+  background-color: rgb(239 246 255 / var(--tw-bg-opacity, 1));
+}
 .active\:bg-blue-700:active {
   --tw-bg-opacity: 1;
   background-color: rgb(29 78 216 / var(--tw-bg-opacity, 1));
@@ -1692,6 +1740,10 @@ html {
   --tw-bg-opacity: 1;
   background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));
 }
+.active\:bg-gray-100:active {
+  --tw-bg-opacity: 1;
+  background-color: rgb(243 244 246 / var(--tw-bg-opacity, 1));
+}
 .active\:bg-gray-200:active {
   --tw-bg-opacity: 1;
   background-color: rgb(229 231 235 / var(--tw-bg-opacity, 1));
@@ -1699,6 +1751,10 @@ html {
 .active\:bg-gray-50:active {
   --tw-bg-opacity: 1;
   background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
+}
+.active\:bg-green-50:active {
+  --tw-bg-opacity: 1;
+  background-color: rgb(240 253 244 / var(--tw-bg-opacity, 1));
 }
 .active\:bg-red-100:active {
   --tw-bg-opacity: 1;
