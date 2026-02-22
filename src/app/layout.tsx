@@ -7,14 +7,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Consultório Hoffmann',
+  title: 'DenteSoft',
   description: 'Gestão simples para consultório odontológico',
-  manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: 'Consultório Hoffmann',
-  },
 }
 
 export const viewport: Viewport = {
