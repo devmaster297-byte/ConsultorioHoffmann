@@ -1,6 +1,6 @@
 {
-  "name": "DenteSoft",
-  "short_name": "DenteSoft",
+  "name": "Consultório Hoffmann",
+  "short_name": "Consultório Hoffmann",
   "description": "Gestão simples para consultório odontológico",
   "start_url": "/pacientes",
   "display": "standalone",
