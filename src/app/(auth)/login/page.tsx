@@ -2,7 +2,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -17,11 +16,9 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export default function LoginPage() {
-  const router = useRouter()
   const { setUsuario } = useAuthStore()
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(false)
-  const [etapa, setEtapa] = useState('')
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -30,26 +27,20 @@ export default function LoginPage() {
   async function onSubmit(data: FormData) {
     setCarregando(true)
     setErro(null)
-    setEtapa('Autenticando...')
 
     const supabase = createClient()
 
-    // 1. Login
     const { data: auth, error: authError } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.senha,
     })
 
     if (authError || !auth.user) {
-      setErro(`Erro de autenticação: ${authError?.message ?? 'sem usuário'}`)
+      setErro(`Email ou senha incorretos`)
       setCarregando(false)
-      setEtapa('')
       return
     }
 
-    setEtapa(`Auth OK (${auth.user.id.slice(0, 8)}...) — buscando perfil...`)
-
-    // 2. Buscar perfil
     const { data: usuario, error: userError } = await supabase
       .from('usuarios')
       .select('*')
@@ -57,22 +48,16 @@ export default function LoginPage() {
       .single()
 
     if (userError || !usuario) {
-      const msg = userError
-        ? `Código: ${userError.code} — ${userError.message}`
-        : 'Retornou null sem erro'
-      setErro(`Perfil não encontrado. ${msg}`)
+      setErro('Perfil não encontrado. Contate o administrador.')
       await supabase.auth.signOut()
       setCarregando(false)
-      setEtapa('')
       return
     }
 
-    setEtapa(`Perfil OK (${usuario.nome}) — redirecionando...`)
     setUsuario(usuario)
 
-    // Pequeno delay para mostrar a etapa antes de navegar
-    await new Promise(r => setTimeout(r, 300))
-    router.push('/pacientes')
+    // Reload completo para evitar conflito com AuthProvider
+    window.location.href = '/pacientes'
   }
 
   return (
@@ -111,15 +96,8 @@ export default function LoginPage() {
             {errors.senha && <p className="mt-1 text-xs text-red-500">{errors.senha.message}</p>}
           </div>
 
-          {/* Etapa atual visível na tela */}
-          {etapa && (
-            <div className="rounded-xl bg-blue-50 px-4 py-3 text-xs text-blue-700 font-mono break-all">
-              {etapa}
-            </div>
-          )}
-
           {erro && (
-            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 break-all">
+            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
               {erro}
             </div>
           )}
@@ -129,7 +107,7 @@ export default function LoginPage() {
             disabled={carregando}
             className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60 active:bg-blue-700 transition-colors"
           >
-            {carregando ? etapa || 'Entrando...' : 'Entrar'}
+            {carregando ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
       </div>
