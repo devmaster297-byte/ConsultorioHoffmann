@@ -2,80 +2,44 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/auth.store'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setUsuario } = useAuthStore()
   const [carregando, setCarregando] = useState(true)
-  const router = useRouter()
-  // Flag para evitar que onAuthStateChange redirecione antes de carregarSessao terminar
-  const inicializado = useRef(false)
+  const carregado = useRef(false)
 
   useEffect(() => {
+    if (carregado.current) return
+    carregado.current = true
+
     const supabase = createClient()
 
-    async function carregarSessao() {
+    async function init() {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession()
 
-        if (user) {
-          const { data: usuarioDB } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('id', user.id)
-            .single()
-
-          if (usuarioDB) {
-            setUsuario(usuarioDB)
-          } else {
-            await supabase.auth.signOut()
-            setUsuario(null)
-          }
-        } else {
-          setUsuario(null)
-        }
-      } catch (e) {
-        console.error('Erro ao carregar sessão:', e)
-        setUsuario(null)
-      } finally {
-        inicializado.current = true
-        setCarregando(false)
-      }
-    }
-
-    carregarSessao()
-
-    // Só reage a mudanças APÓS a carga inicial terminar
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!inicializado.current) return
-
-        if (event === 'SIGNED_OUT' || !session) {
-          setUsuario(null)
-          router.push('/login')
-          return
-        }
-
-        if (event === 'SIGNED_IN') {
-          const { data: usuarioDB } = await supabase
+        if (session?.user) {
+          const { data: usuario } = await supabase
             .from('usuarios')
             .select('*')
             .eq('id', session.user.id)
             .single()
 
-          if (usuarioDB) {
-            setUsuario(usuarioDB)
-            router.push('/pacientes')
+          if (usuario) {
+            setUsuario(usuario)
           }
         }
+      } catch (e) {
+        console.error('AuthProvider erro:', e)
+      } finally {
+        setCarregando(false)
       }
-    )
+    }
 
-    return () => subscription.unsubscribe()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    init()
+  }, [setUsuario])
 
   if (carregando) {
     return (
