@@ -1,7 +1,7 @@
 // src/app/(app)/pacientes/[id]/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -39,34 +39,63 @@ export default function FichaPacientePage() {
   const [paciente, setPaciente] = useState<Paciente | null>(null)
   const [status, setStatus] = useState<StatusFinanceiro>('em_dia')
   const [carregandoPaciente, setCarregandoPaciente] = useState(true)
+  const [erroCarregar, setErroCarregar] = useState<string | null>(null)
 
-  const { atendimentos, carregando: carregandoAtend } = useAtendimentos(id, clinicaId ?? '')
-  const carregando = carregandoPaciente || carregandoAtend
-
-  useEffect(() => {
-    if (!id || !clinicaId) return
-    carregarPaciente()
-  }, [id, clinicaId])
-
-  async function carregarPaciente() {
-    const supabase = createClient()
-
-    const { data: pac } = await supabase
-      .from('pacientes')
-      .select('*')
-      .eq('id', id)
-      .single()
-
-    if (!pac) {
-      router.push('/pacientes')
+  // Buscar dados do paciente
+  const carregarPaciente = useCallback(async () => {
+    if (!id || !clinicaId) {
+      setCarregandoPaciente(false)
       return
     }
 
-    setPaciente(pac)
+    try {
+      const supabase = createClient()
+      const { data: pac, error } = await supabase
+        .from('pacientes')
+        .select('*')
+        .eq('id', id)
+        .single()
 
-    const s = await calcularStatusFinanceiro(id, clinicaId!)
-    setStatus(s)
-    setCarregandoPaciente(false)
+      if (error || !pac) {
+        console.error('Erro ao carregar paciente:', error)
+        setErroCarregar('Paciente não encontrado')
+        // Redirecionar após um tempo
+        setTimeout(() => router.push('/pacientes'), 2000)
+        return
+      }
+
+      setPaciente(pac)
+
+      // Calcular status financeiro
+      const s = await calcularStatusFinanceiro(id, clinicaId)
+      setStatus(s)
+    } catch (err) {
+      console.error('Erro inesperado:', err)
+      setErroCarregar('Erro ao carregar dados')
+    } finally {
+      setCarregandoPaciente(false)
+    }
+  }, [id, clinicaId, router])
+
+  useEffect(() => {
+    carregarPaciente()
+  }, [carregarPaciente])
+
+  // Hooks de atendimentos e radiografias (só ativam quando temos paciente e clinicaId)
+  const { atendimentos, carregando: carregandoAtend } = useAtendimentos(
+    id ?? '',
+    clinicaId ?? ''
+  )
+
+  const carregando = carregandoPaciente || carregandoAtend
+
+  if (erroCarregar) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <div className="text-red-500 mb-2">❌ {erroCarregar}</div>
+        <p className="text-sm text-gray-500">Redirecionando para lista de pacientes...</p>
+      </div>
+    )
   }
 
   if (carregando) {
@@ -78,6 +107,14 @@ export default function FichaPacientePage() {
   }
 
   if (!paciente) return null
+
+  // Função para debug do clique (opcional)
+  const handleNovoAtendimento = (e: React.MouseEvent) => {
+    console.log('Clicou em + Atendimento, navegando para:', `/pacientes/${id}/atendimento/novo`)
+    // Se o Link não funcionar, podemos usar router.push
+    // e.preventDefault()
+    // router.push(`/pacientes/${id}/atendimento/novo`)
+  }
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
@@ -99,10 +136,10 @@ export default function FichaPacientePage() {
           </Link>
         </div>
 
-        {/* Perfil */}
+        {/* Perfil (igual ao original) */}
         <div className="px-4 py-5">
+          {/* ... (mantido igual) */}
           <div className="flex items-start gap-4">
-            {/* Foto */}
             <div className="relative h-16 w-16 flex-shrink-0">
               {paciente.foto_url ? (
                 <Image
@@ -118,7 +155,6 @@ export default function FichaPacientePage() {
               )}
             </div>
 
-            {/* Dados */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <StatusBadge status={status} />
@@ -154,11 +190,13 @@ export default function FichaPacientePage() {
           )}
         </div>
 
-        {/* Ações rápidas */}
+        {/* Ações rápidas - ATENÇÃO: link corrigido */}
         <div className="grid grid-cols-4 gap-2 px-4 pb-4">
           <Link
             href={`/pacientes/${id}/atendimento/novo`}
             className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 py-3 px-2 text-white active:bg-blue-700 transition-colors"
+            onClick={handleNovoAtendimento} // opcional, só para debug
+            prefetch={false} // evita problemas de prefetch
           >
             <Plus className="h-5 w-5" />
             <span className="text-xs font-medium">Atendimento</span>
@@ -186,7 +224,7 @@ export default function FichaPacientePage() {
           </Link>
         </div>
 
-        {/* Abas */}
+        {/* Abas (igual original) */}
         <div className="flex border-t border-gray-100">
           {(['resumo', 'historico', 'radiografias'] as Aba[]).map((aba) => {
             const labels: Record<Aba, string> = {
@@ -211,7 +249,7 @@ export default function FichaPacientePage() {
         </div>
       </div>
 
-      {/* Conteúdo da aba */}
+      {/* Conteúdo da aba (mantido igual) */}
       <div className="flex-1 px-4 py-4">
         {abaAtiva === 'resumo' && (
           <ResumoAba pacienteId={id} atendimentos={atendimentos} />
@@ -227,8 +265,7 @@ export default function FichaPacientePage() {
   )
 }
 
-// ── Sub-componentes das abas ──────────────────────────────────
-
+// Sub-componentes (mantidos iguais)
 function ResumoAba({
   pacienteId,
   atendimentos,
@@ -237,10 +274,9 @@ function ResumoAba({
   atendimentos: ReturnType<typeof import('@/lib/hooks/useAtendimentos').useAtendimentos>['atendimentos']
 }) {
   const ultimo = atendimentos[0]
-
+  // ... (igual)
   return (
     <div className="space-y-4">
-      {/* Último atendimento */}
       {ultimo ? (
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -268,7 +304,6 @@ function ResumoAba({
         </div>
       )}
 
-      {/* Métricas */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm text-center">
           <p className="text-2xl font-bold text-gray-900">{atendimentos.length}</p>
