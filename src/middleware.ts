@@ -25,19 +25,16 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-
   const pathname = request.nextUrl.pathname
 
-  // Rotas públicas — não exigem autenticação
   const isPublic =
     pathname === '/' ||
     pathname.startsWith('/login') ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/icons') ||
+    pathname.startsWith('/icons/') ||
     pathname === '/manifest.json' ||
     pathname === '/favicon.ico' ||
     pathname === '/sw.js' ||
-    pathname === '/workbox-' // service worker chunks
+    pathname.startsWith('/workbox-')  // ← fix: startsWith em vez de ===
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -51,8 +48,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Excluir arquivos estáticos e de build do middleware
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|workbox-.*\\.js|manifest\\.json|icons/).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|sw\\.js|workbox-.*\\.js|manifest\\.json|icons/).*)',
   ],
 }

@@ -31,6 +31,8 @@ export default function LoginPage() {
     setErro(null)
 
     const supabase = createClient()
+
+    // 1. Autenticar no Supabase Auth
     const { data: auth, error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.senha,
@@ -42,15 +44,25 @@ export default function LoginPage() {
       return
     }
 
-    // Buscar dados do usuário
-    const { data: usuario } = await supabase
+    // 2. Buscar perfil na tabela usuarios
+    const { data: usuario, error: userError } = await supabase
       .from('usuarios')
       .select('*')
       .eq('id', auth.user.id)
       .single()
 
-    if (!usuario) {
-      setErro('Usuário não encontrado. Contate o administrador.')
+    if (userError || !usuario) {
+      // Log para debug
+      console.error('Erro ao buscar usuario:', userError)
+      console.log('Auth user id:', auth.user.id)
+
+      // Fazer logout para não deixar sessão suja
+      await supabase.auth.signOut()
+
+      setErro(
+        'Perfil de usuário não encontrado. ' +
+        'Execute o SQL de configuração no Supabase para vincular seu usuário à clínica.'
+      )
       setCarregando(false)
       return
     }
@@ -60,7 +72,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-gray-50 px-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="mb-8 text-center">
