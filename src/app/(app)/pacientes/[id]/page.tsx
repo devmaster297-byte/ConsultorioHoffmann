@@ -15,6 +15,7 @@ import {
   Edit2,
   Calendar,
   CreditCard,
+  ClipboardList,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Paciente } from '@/lib/supabase/types'
@@ -154,7 +155,7 @@ export default function FichaPacientePage() {
         </div>
 
         {/* Ações rápidas */}
-        <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+        <div className="grid grid-cols-4 gap-2 px-4 pb-4">
           <Link
             href={`/pacientes/${id}/atendimento/novo`}
             className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 py-3 px-2 text-white active:bg-blue-700 transition-colors"
@@ -175,6 +176,13 @@ export default function FichaPacientePage() {
           >
             <DollarSign className="h-5 w-5" />
             <span className="text-xs font-medium">Cobrança</span>
+          </Link>
+          <Link
+            href={`/pacientes/${id}/orcamentos`}
+            className="flex flex-col items-center gap-1.5 rounded-xl bg-gray-100 py-3 px-2 text-gray-700 active:bg-gray-200 transition-colors"
+          >
+            <ClipboardList className="h-5 w-5" />
+            <span className="text-xs font-medium">Orçamento</span>
           </Link>
         </div>
 

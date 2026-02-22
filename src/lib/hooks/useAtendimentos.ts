@@ -29,18 +29,18 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
 
     const supabase = createClient()
 
-    // Buscar atendimentos com joins
+    // Buscar atendimentos SEM join em usuarios (evita erro 400 por FK ausente)
     const { data: atend, error } = await supabase
       .from('atendimentos')
       .select(`
         id,
         paciente_id,
+        dentista_id,
         data_atendimento,
         procedimento_id,
         descricao,
         valor_total,
-        procedimento:procedimentos(nome),
-        dentista:usuarios(nome)
+        procedimento:procedimentos(nome)
       `)
       .eq('paciente_id', pacienteId)
       .eq('clinica_id', clinicaId)
@@ -60,7 +60,18 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
 
     const atendIds = atend.map((a) => a.id)
 
-    // Buscar lançamentos financeiros vinculados a esses atendimentos
+    // Buscar nomes dos dentistas separadamente
+    const dentistaIds = [...new Set(atend.map((a) => a.dentista_id).filter(Boolean))] as string[]
+    const dentistaMap: Record<string, string> = {}
+    if (dentistaIds.length > 0) {
+      const { data: dentistas } = await supabase
+        .from('usuarios')
+        .select('id, nome')
+        .in('id', dentistaIds)
+      dentistas?.forEach((d) => { dentistaMap[d.id] = d.nome })
+    }
+
+    // Buscar lançamentos financeiros vinculados
     const { data: lancamentos } = await supabase
       .from('financeiro_lancamentos')
       .select('id, atendimento_id')
@@ -72,7 +83,7 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       (lancamentos ?? []).map((l) => [l.id, l.atendimento_id])
     )
 
-    // Buscar parcelas para calcular status de pagamento
+    // Buscar parcelas
     const { data: parcelas } = lancamentoIds.length > 0
       ? await supabase
           .from('financeiro_parcelas')
@@ -80,7 +91,6 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
           .in('lancamento_id', lancamentoIds)
       : { data: [] }
 
-    // Agrupar parcelas por atendimento
     const parcelasAtend: Record<string, string[]> = {}
     parcelas?.forEach((p) => {
       const atendId = lancAtendMap[p.lancamento_id]
@@ -90,7 +100,7 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       }
     })
 
-    // Buscar quantidade de radiografias por atendimento
+    // Buscar radiografias
     const { data: rxCounts } = await supabase
       .from('radiografias')
       .select('atendimento_id')
@@ -103,19 +113,16 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       }
     })
 
-    // Montar resultado final
+    // Montar resultado
     const resultado: AtendimentoDetalhado[] = atend.map((a) => {
       const statusParcelas = parcelasAtend[a.id] ?? []
-
       let status_pagamento: StatusPagamento = 'aberto'
-      if (statusParcelas.length === 0) {
-        status_pagamento = 'aberto'
-      } else if (statusParcelas.every((s) => s === 'pago')) {
-        status_pagamento = 'pago'
-      } else if (statusParcelas.some((s) => s === 'pago' || s === 'pago_parcial')) {
-        status_pagamento = 'parcial'
-      } else {
-        status_pagamento = 'aberto'
+      if (statusParcelas.length > 0) {
+        if (statusParcelas.every((s) => s === 'pago')) {
+          status_pagamento = 'pago'
+        } else if (statusParcelas.some((s) => s === 'pago' || s === 'pago_parcial')) {
+          status_pagamento = 'parcial'
+        }
       }
 
       return {
@@ -126,7 +133,7 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
         procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
         descricao: a.descricao,
         valor_total: a.valor_total,
-        dentista_nome: (a.dentista as unknown as { nome: string } | null)?.nome ?? null,
+        dentista_nome: a.dentista_id ? (dentistaMap[a.dentista_id] ?? null) : null,
         status_pagamento,
         total_radiografias: rxPorAtend[a.id] ?? 0,
       }
@@ -136,9 +143,7 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
     setCarregando(false)
   }, [pacienteId, clinicaId])
 
-  useEffect(() => {
-    carregar()
-  }, [carregar])
+  useEffect(() => { carregar() }, [carregar])
 
   return { atendimentos, carregando, erro, recarregar: carregar }
 }
