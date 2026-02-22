@@ -17,52 +17,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabase = createClient()
 
-    async function init() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-
-        if (session?.user) {
-          // Já temos dados no store persistido e são do mesmo usuário
-          if (usuario?.id === session.user.id && usuario?.clinica_id) {
-            setCarregando(false)
-            return
-          }
-
-          // Buscar perfil do banco
-          const { data: usuarioDB } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-
-          if (usuarioDB) {
-            setUsuario(usuarioDB)
-            setCarregando(false)
-          } else {
-            // Auth existe mas sem perfil → logout
-            await supabase.auth.signOut()
-            setUsuario(null)
-            setCarregando(false)
-            window.location.href = '/login'
-          }
-        } else {
-          // Sem sessão
-          setUsuario(null)
+    // Função que atualiza o estado com base na sessão
+    const atualizarUsuario = async (session: any) => {
+      if (session?.user) {
+        // Se o usuário já está no store e é o mesmo, apenas finaliza carregamento
+        if (usuario?.id === session.user.id && usuario?.clinica_id) {
           setCarregando(false)
-          const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
-          if (!rotaPublica) {
-            window.location.href = '/login'
+          return
+        }
+
+        // Buscar perfil do banco
+        const { data: usuarioDB } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+
+        if (usuarioDB) {
+          setUsuario(usuarioDB)
+        } else {
+          // Autenticado mas sem perfil → faz logout
+          await supabase.auth.signOut()
+          setUsuario(null)
+          if (!ROTAS_PUBLICAS.some(r => pathname.startsWith(r))) {
+            router.push('/login')
           }
         }
-      } catch (e) {
-        console.error('AuthProvider erro:', e)
-        setCarregando(false)
+      } else {
+        setUsuario(null)
+        if (!ROTAS_PUBLICAS.some(r => pathname.startsWith(r))) {
+          router.push('/login')
+        }
       }
+      setCarregando(false)
     }
 
-    init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname])
+    // Verificar sessão inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      atualizarUsuario(session)
+    })
+
+    // Escutar mudanças na autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      atualizarUsuario(session)
+    })
+
+    return () => subscription?.unsubscribe()
+  }, [pathname, router, setUsuario, usuario]) // pathname ainda é necessário para redirecionar ao trocar de rota sem usuário
+
+  // Este useEffect cuida do redirecionamento quando a rota muda e o usuário não está autenticado
+  useEffect(() => {
+    if (!carregando && !usuario && !ROTAS_PUBLICAS.some(r => pathname.startsWith(r))) {
+      router.push('/login')
+    }
+  }, [pathname, usuario, carregando, router])
 
   if (carregando) {
     return (
