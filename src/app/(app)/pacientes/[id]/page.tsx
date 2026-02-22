@@ -192,15 +192,16 @@ export default function FichaPacientePage() {
 
         {/* Ações rápidas - ATENÇÃO: link corrigido */}
         <div className="grid grid-cols-4 gap-2 px-4 pb-4">
-          <Link
-            href={`/pacientes/${id}/atendimento/novo`}
-            className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 py-3 px-2 text-white active:bg-blue-700 transition-colors"
-            onClick={handleNovoAtendimento} // opcional, só para debug
-            prefetch={false} // evita problemas de prefetch
-          >
-            <Plus className="h-5 w-5" />
-            <span className="text-xs font-medium">Atendimento</span>
-          </Link>
+          <button
+  onClick={() => {
+    console.log('Navegando...');
+    router.push(`/pacientes/${id}/atendimento/novo`);
+  }}
+  className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 py-3 px-2 text-white active:bg-blue-700 transition-colors"
+>
+  <Plus className="h-5 w-5" />
+  <span className="text-xs font-medium">Atendimento</span>
+</button>
           <Link
             href={`/pacientes/${id}/radiografias`}
             className="flex flex-col items-center gap-1.5 rounded-xl bg-gray-100 py-3 px-2 text-gray-700 active:bg-gray-200 transition-colors"
