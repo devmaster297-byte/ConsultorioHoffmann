@@ -21,6 +21,7 @@ export default function LoginPage() {
   const { setUsuario } = useAuthStore()
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(false)
+  const [etapa, setEtapa] = useState('')
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -29,22 +30,26 @@ export default function LoginPage() {
   async function onSubmit(data: FormData) {
     setCarregando(true)
     setErro(null)
+    setEtapa('Autenticando...')
 
     const supabase = createClient()
 
-    // 1. Autenticar no Supabase Auth
-    const { data: auth, error } = await supabase.auth.signInWithPassword({
+    // 1. Login
+    const { data: auth, error: authError } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.senha,
     })
 
-    if (error || !auth.user) {
-      setErro('Email ou senha incorretos')
+    if (authError || !auth.user) {
+      setErro(`Erro de autenticação: ${authError?.message ?? 'sem usuário'}`)
       setCarregando(false)
+      setEtapa('')
       return
     }
 
-    // 2. Buscar perfil na tabela usuarios
+    setEtapa(`Auth OK (${auth.user.id.slice(0, 8)}...) — buscando perfil...`)
+
+    // 2. Buscar perfil
     const { data: usuario, error: userError } = await supabase
       .from('usuarios')
       .select('*')
@@ -52,29 +57,27 @@ export default function LoginPage() {
       .single()
 
     if (userError || !usuario) {
-      // Log para debug
-      console.error('Erro ao buscar usuario:', userError)
-      console.log('Auth user id:', auth.user.id)
-
-      // Fazer logout para não deixar sessão suja
+      const msg = userError
+        ? `Código: ${userError.code} — ${userError.message}`
+        : 'Retornou null sem erro'
+      setErro(`Perfil não encontrado. ${msg}`)
       await supabase.auth.signOut()
-
-      setErro(
-        'Perfil de usuário não encontrado. ' +
-        'Execute o SQL de configuração no Supabase para vincular seu usuário à clínica.'
-      )
       setCarregando(false)
+      setEtapa('')
       return
     }
 
+    setEtapa(`Perfil OK (${usuario.nome}) — redirecionando...`)
     setUsuario(usuario)
+
+    // Pequeno delay para mostrar a etapa antes de navegar
+    await new Promise(r => setTimeout(r, 300))
     router.push('/pacientes')
   }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white text-2xl shadow-lg">
             🦷
@@ -93,9 +96,7 @@ export default function LoginPage() {
               autoComplete="email"
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
-            {errors.email && (
-              <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
-            )}
+            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
           </div>
 
           <div>
@@ -107,13 +108,18 @@ export default function LoginPage() {
               autoComplete="current-password"
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
-            {errors.senha && (
-              <p className="mt-1 text-xs text-red-500">{errors.senha.message}</p>
-            )}
+            {errors.senha && <p className="mt-1 text-xs text-red-500">{errors.senha.message}</p>}
           </div>
 
+          {/* Etapa atual visível na tela */}
+          {etapa && (
+            <div className="rounded-xl bg-blue-50 px-4 py-3 text-xs text-blue-700 font-mono break-all">
+              {etapa}
+            </div>
+          )}
+
           {erro && (
-            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 break-all">
               {erro}
             </div>
           )}
@@ -123,7 +129,7 @@ export default function LoginPage() {
             disabled={carregando}
             className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60 active:bg-blue-700 transition-colors"
           >
-            {carregando ? 'Entrando...' : 'Entrar'}
+            {carregando ? etapa || 'Entrando...' : 'Entrar'}
           </button>
         </form>
       </div>
