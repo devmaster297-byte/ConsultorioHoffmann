@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
-    "@supabase/ssr": "^0.3.0",
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.39.7",
     "clsx": "^2.1.0",
     "lucide-react": "^0.344.0",
