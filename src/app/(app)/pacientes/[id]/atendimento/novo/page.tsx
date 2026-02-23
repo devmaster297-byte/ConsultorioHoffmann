@@ -28,6 +28,11 @@ interface AtendimentoFull {
   }>
 }
 
+// Interface para tipar o retorno do Supabase e evitar erro de 'any'
+interface LancamentoSimples {
+  id: string
+}
+
 const statusPagConfig: Record<string, { label: string; className: string }> = {
   pago: { label: 'Pago', className: 'text-emerald-700 bg-emerald-50' },
   pago_parcial: { label: 'Pago parcial', className: 'text-amber-700 bg-amber-50' },
@@ -47,6 +52,7 @@ export default function DetalheAtendimentoPage() {
   useEffect(() => {
     if (!atendimentoId || !clinicaId) return
     carregar()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atendimentoId, clinicaId])
 
   async function carregar() {
@@ -77,14 +83,16 @@ export default function DetalheAtendimentoPage() {
       .select('*', { count: 'exact', head: true })
       .eq('atendimento_id', atendimentoId)
 
-    // Buscar parcelas via lançamentos
-    const { data: lancamentos } = await supabase
+    // Buscar parcelas via lançamentos com tipagem explícita
+    const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id')
       .eq('atendimento_id', atendimentoId)
       .eq('clinica_id', clinicaId)
 
-    const lancIds = lancamentos?.map((l) => l.id) ?? []
+    const lancamentos = (lancamentosRaw || []) as LancamentoSimples[]
+    const lancIds = lancamentos.map((l) => l.id)
+    
     let parcelas: AtendimentoFull['parcelas'] = []
 
     if (lancIds.length > 0) {
@@ -94,17 +102,17 @@ export default function DetalheAtendimentoPage() {
         .in('lancamento_id', lancIds)
         .order('numero')
 
-      parcelas = parc ?? []
+      parcelas = (parc || []) as AtendimentoFull['parcelas']
     }
 
     setDados({
       id: atend.id,
       paciente_id: atend.paciente_id,
       data_atendimento: atend.data_atendimento,
-      procedimento_nome: (atend.procedimento as unknown as { nome: string } | null)?.nome ?? null,
+      procedimento_nome: (atend.procedimento as any)?.nome ?? null,
       descricao: atend.descricao,
       valor_total: atend.valor_total,
-      dentista_nome: (atend.dentista as unknown as { nome: string } | null)?.nome ?? null,
+      dentista_nome: (atend.dentista as any)?.nome ?? null,
       total_radiografias: totalRx ?? 0,
       parcelas,
     })
