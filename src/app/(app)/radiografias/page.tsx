@@ -189,7 +189,7 @@ export default function RadiografiasGlobalPage() {
           <div className="space-y-6 mt-2">
             {Object.entries(grupos).map(([chave, lista]) => (
               <div key={chave}>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1 capitalize">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
                   {labelMes(chave)}
                 </p>
                 <div className="grid grid-cols-3 gap-1.5">

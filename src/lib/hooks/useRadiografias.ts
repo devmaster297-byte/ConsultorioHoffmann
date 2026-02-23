@@ -7,6 +7,12 @@ export interface RadiografiaComUrl extends Radiografia {
   signed_url: string | null
 }
 
+// Interface para tipar explicitamente o retorno do banco de dados
+interface RadiografiaRaw extends Radiografia {
+  storage_path: string
+  thumbnail_path: string | null
+}
+
 export function useRadiografias(pacienteId: string, clinicaId: string, atendimentoId?: string) {
   const [radiografias, setRadiografias] = useState<RadiografiaComUrl[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -44,9 +50,12 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
       return
     }
 
+    // Casting explícito para RadiografiaRaw[] resolve o erro de 'any' implícito
+    const rawData = data as unknown as RadiografiaRaw[]
+
     // Gerar signed URLs para todas as imagens (1 hora de validade)
     const comUrls = await Promise.all(
-      data.map(async (rx) => {
+      rawData.map(async (rx) => {
         const { data: urlData } = await supabase.storage
           .from('radiografias')
           .createSignedUrl(rx.storage_path, 3600)
@@ -77,7 +86,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
   ): Promise<{ sucesso: boolean; erro?: string }> {
     const supabase = createClient()
 
-    // Caminho no storage: clinicaId/pacienteId/timestamp.ext
     const ext = file.name.split('.').pop() ?? 'jpg'
     const path = `${clinicaId}/${pacienteId}/${Date.now()}.${ext}`
 
@@ -89,7 +97,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
       return { sucesso: false, erro: 'Erro ao enviar imagem. Tente novamente.' }
     }
 
-    // Salvar registro no banco
     const { error: dbError } = await supabase.from('radiografias').insert({
       clinica_id: clinicaId,
       paciente_id: pacienteId,
@@ -101,7 +108,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
     })
 
     if (dbError) {
-      // Limpar arquivo do storage se o registro falhou
       await supabase.storage.from('radiografias').remove([path])
       return { sucesso: false, erro: 'Erro ao salvar registro. Tente novamente.' }
     }
@@ -113,7 +119,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
   async function deletarRadiografia(rx: RadiografiaComUrl): Promise<boolean> {
     const supabase = createClient()
 
-    // Deletar do banco (cascade não existe aqui, mas temos ON DELETE CASCADE no storage_path)
     const { error: dbError } = await supabase
       .from('radiografias')
       .delete()
@@ -121,7 +126,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
 
     if (dbError) return false
 
-    // Deletar do storage
     await supabase.storage.from('radiografias').remove([rx.storage_path])
     if (rx.thumbnail_path) {
       await supabase.storage.from('radiografias').remove([rx.thumbnail_path])
