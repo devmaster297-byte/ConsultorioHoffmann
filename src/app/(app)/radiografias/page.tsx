@@ -2,14 +2,12 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import Link from 'next/link'
 import { Search, ScanLine, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/auth.store'
 import { RxViewer } from '@/components/radiografias/RxViewer'
-import { RxUploader } from '@/components/radiografias/RxUploader'
-import { RadiografiaComUrl, useRadiografias } from '@/lib/hooks/useRadiografias'
-import { formatarData, debounce, iniciais } from '@/lib/utils'
+import { RadiografiaComUrl } from '@/lib/hooks/useRadiografias'
+import { formatarData, debounce } from '@/lib/utils'
 
 const TIPO_LABEL: Record<string, string> = {
   periapical: 'Periapical',
@@ -19,6 +17,21 @@ const TIPO_LABEL: Record<string, string> = {
 
 interface RxComPaciente extends RadiografiaComUrl {
   paciente_nome: string
+}
+
+// Interface ajustada para incluir os campos que o TS reclamou
+interface RadiografiaRaw {
+  id: string
+  clinica_id: string
+  paciente_id: string
+  atendimento_id: string | null // Adicionado
+  storage_path: string
+  thumbnail_path: string | null // Adicionado
+  anotacao: string | null
+  tipo: string | null
+  data_exame: string | null // Adicionado
+  created_at: string
+  paciente: { nome: string } | { nome: string }[] | null
 }
 
 export default function RadiografiasGlobalPage() {
@@ -42,17 +55,35 @@ export default function RadiografiasGlobalPage() {
         .order('created_at', { ascending: false })
         .limit(100)
 
+      const rawData = (data as unknown as RadiografiaRaw[] || [])
+
       let lista = await Promise.all(
-        (data ?? []).map(async (rx) => {
+        rawData.map(async (rx) => {
           const { data: urlData } = await supabase.storage
             .from('radiografias')
             .createSignedUrl(rx.storage_path, 3600)
 
-          return {
-            ...rx,
+          const pNome = Array.isArray(rx.paciente) 
+            ? rx.paciente[0]?.nome 
+            : rx.paciente?.nome
+
+          // Criamos o objeto garantindo todas as propriedades da interface
+          const rxFormatado: RxComPaciente = {
+            id: rx.id,
+            clinica_id: rx.clinica_id,
+            paciente_id: rx.paciente_id,
+            atendimento_id: rx.atendimento_id,
+            storage_path: rx.storage_path,
+            thumbnail_path: rx.thumbnail_path,
+            anotacao: rx.anotacao,
+            tipo: rx.tipo as any,
+            data_exame: rx.data_exame,
+            created_at: rx.created_at,
             signed_url: urlData?.signedUrl ?? null,
-            paciente_nome: (rx.paciente as unknown as { nome: string } | null)?.nome ?? '',
-          } as RxComPaciente
+            paciente_nome: pNome ?? 'Paciente não identificado',
+          }
+
+          return rxFormatado
         })
       )
 
@@ -71,15 +102,22 @@ export default function RadiografiasGlobalPage() {
     [clinicaId]
   )
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const carregarDebounced = useCallback(debounce(carregar, 300), [carregar])
+  const carregarDebounced = useCallback(debounce((q: string) => carregar(q), 300), [carregar])
 
   useEffect(() => { carregar('') }, [carregar])
-  useEffect(() => { carregarDebounced(busca) }, [busca, carregarDebounced])
+  useEffect(() => { 
+    if (busca.trim() !== '') {
+      carregarDebounced(busca) 
+    } else {
+      carregar('')
+    }
+  }, [busca, carregarDebounced, carregar])
 
   async function handleDeletar(rx: RadiografiaComUrl) {
     const supabase = createClient()
-    await supabase.from('radiografias').delete().eq('id', rx.id)
+    const { error } = await supabase.from('radiografias').delete().eq('id', rx.id)
+    if (error) return false
+
     await supabase.storage.from('radiografias').remove([rx.storage_path])
     setRxs((prev) => prev.filter((r) => r.id !== rx.id))
     if (rxs.length <= 1) setViewerIndex(null)
@@ -88,12 +126,13 @@ export default function RadiografiasGlobalPage() {
 
   async function handleAtualizarAnotacao(rxId: string, anotacao: string) {
     const supabase = createClient()
-    await supabase.from('radiografias').update({ anotacao }).eq('id', rxId)
+    const { error } = await supabase.from('radiografias').update({ anotacao }).eq('id', rxId)
+    if (error) return false
+
     setRxs((prev) => prev.map((r) => (r.id === rxId ? { ...r, anotacao } : r)))
     return true
   }
 
-  // Agrupar por mês
   const grupos = rxs.reduce<Record<string, RxComPaciente[]>>((acc, rx) => {
     const chave = rx.created_at.slice(0, 7)
     if (!acc[chave]) acc[chave] = []
@@ -110,14 +149,13 @@ export default function RadiografiasGlobalPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
+    <div className="flex flex-col h-full bg-gray-50">
       <div className="sticky top-0 z-10 bg-gray-50 px-4 pt-4 pb-3">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-gray-900">Raio-X</h1>
           <button
             onClick={() => setMostrarUploader(true)}
-            className="flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+            className="flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-md active:scale-95 transition-transform"
           >
             <Plus className="h-4 w-4" />
             Novo
@@ -135,18 +173,17 @@ export default function RadiografiasGlobalPage() {
         </div>
       </div>
 
-      {/* Conteúdo */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {carregando ? (
           <div className="grid grid-cols-3 gap-1.5 mt-2">
             {[...Array(9)].map((_, i) => (
-              <div key={i} className="aspect-square rounded-xl bg-gray-100 animate-pulse" />
+              <div key={i} className="aspect-square rounded-xl bg-gray-200 animate-pulse" />
             ))}
           </div>
         ) : rxs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <ScanLine className="h-12 w-12 text-gray-300 mb-3" />
-            <p className="font-medium text-gray-500">Nenhuma radiografia</p>
+            <p className="font-medium text-gray-500">Nenhuma radiografia encontrada</p>
           </div>
         ) : (
           <div className="space-y-6 mt-2">
@@ -156,14 +193,13 @@ export default function RadiografiasGlobalPage() {
                   {labelMes(chave)}
                 </p>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {lista.map((rx, i) => (
+                  {lista.map((rx) => (
                     <button
                       key={rx.id}
                       onClick={() => setViewerIndex(rxs.indexOf(rx))}
                       className="relative aspect-square rounded-xl overflow-hidden bg-gray-900 active:scale-95 transition-transform"
                     >
                       {rx.signed_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={rx.signed_url}
                           alt={rx.anotacao ?? 'Raio-X'}
@@ -175,9 +211,7 @@ export default function RadiografiasGlobalPage() {
                           <ScanLine className="h-5 w-5 text-gray-600" />
                         </div>
                       )}
-
-                      {/* Overlay com nome do paciente */}
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2">
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2 text-left">
                         <p className="text-[10px] font-semibold text-white truncate leading-tight">
                           {rx.paciente_nome.split(' ')[0]}
                         </p>
@@ -196,7 +230,6 @@ export default function RadiografiasGlobalPage() {
         )}
       </div>
 
-      {/* Viewer */}
       {viewerIndex !== null && (
         <RxViewer
           radiografias={rxs}
@@ -207,18 +240,18 @@ export default function RadiografiasGlobalPage() {
         />
       )}
 
-      {/* Uploader sem paciente específico — nota: o upload global precisaria de um seletor de paciente */}
       {mostrarUploader && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/50">
-          <div className="w-full bg-white rounded-t-2xl p-6">
-            <p className="text-center text-sm text-gray-600 mb-4">
-              Para adicionar raio-x, acesse a ficha do paciente.
+        <div className="fixed inset-0 z-40 flex items-end bg-black/50 p-4">
+          <div className="w-full bg-white rounded-2xl p-6 shadow-2xl max-w-sm mx-auto mb-4">
+            <p className="text-center text-sm font-medium text-gray-900 mb-1">Dica</p>
+            <p className="text-center text-xs text-gray-500 mb-6">
+              Para adicionar um novo raio-X, acesse a ficha do paciente específico e clique em "Adicionar".
             </p>
             <button
               onClick={() => setMostrarUploader(false)}
-              className="w-full rounded-xl bg-gray-100 py-3 text-sm font-medium text-gray-700"
+              className="w-full rounded-xl bg-gray-100 py-3 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors"
             >
-              Fechar
+              Entendi
             </button>
           </div>
         </div>

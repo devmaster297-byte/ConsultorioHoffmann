@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/auth.store'
 import { formatarData, formatarMoeda, debounce } from '@/lib/utils'
 
+// Interface para o estado da aplicação
 interface AtendimentoGlobal {
   id: string
   paciente_id: string
@@ -16,6 +17,17 @@ interface AtendimentoGlobal {
   procedimento_nome: string | null
   descricao: string | null
   valor_total: number | null
+}
+
+// Interface para a resposta bruta do banco de dados (Fix para o erro de 'any' implícito)
+interface AtendimentoRaw {
+  id: string
+  paciente_id: string
+  data_atendimento: string
+  descricao: string | null
+  valor_total: number | null
+  procedimento: { nome: string } | { nome: string }[] | null
+  paciente: { nome: string } | { nome: string }[] | null
 }
 
 export default function HistoricoPage() {
@@ -31,7 +43,9 @@ export default function HistoricoPage() {
       setBuscando(true)
 
       const supabase = createClient()
-      let req = supabase
+      
+      // Realiza a busca com os joins de paciente e procedimento
+      const { data } = await supabase
         .from('atendimentos')
         .select(`
           id,
@@ -46,18 +60,26 @@ export default function HistoricoPage() {
         .order('data_atendimento', { ascending: false })
         .limit(100)
 
-      const { data } = await req
+      // Casting dos dados para a interface AtendimentoRaw para evitar o erro de 'any'
+      const atendimentosBrutos = (data ?? []) as unknown as AtendimentoRaw[]
 
-      let resultado = (data ?? []).map((a) => ({
-        id: a.id,
-        paciente_id: a.paciente_id,
-        paciente_nome: (a.paciente as unknown as { nome: string } | null)?.nome ?? '',
-        data_atendimento: a.data_atendimento,
-        procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
-        descricao: a.descricao,
-        valor_total: a.valor_total,
-      }))
+      let resultado: AtendimentoGlobal[] = atendimentosBrutos.map((a) => {
+        // Tratamento para garantir que pegamos o nome mesmo se vier como array ou objeto único
+        const pNome = Array.isArray(a.paciente) ? a.paciente[0]?.nome : a.paciente?.nome
+        const procNome = Array.isArray(a.procedimento) ? a.procedimento[0]?.nome : a.procedimento?.nome
 
+        return {
+          id: a.id,
+          paciente_id: a.paciente_id,
+          paciente_nome: pNome ?? 'Paciente não identificado',
+          data_atendimento: a.data_atendimento,
+          procedimento_nome: procNome ?? null,
+          descricao: a.descricao,
+          valor_total: a.valor_total,
+        }
+      })
+
+      // Filtro de busca local
       if (query.trim()) {
         const q = query.toLowerCase()
         resultado = resultado.filter(
@@ -75,13 +97,20 @@ export default function HistoricoPage() {
     [clinicaId]
   )
 
+  // Debounce para não sobrecarregar o banco enquanto o usuário digita
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const carregarDebounced = useCallback(debounce(carregar, 300), [carregar])
+  const carregarDebounced = useCallback(debounce((q: string) => carregar(q), 300), [carregar])
 
   useEffect(() => { carregar('') }, [carregar])
-  useEffect(() => { carregarDebounced(busca) }, [busca, carregarDebounced])
+  useEffect(() => { 
+    if (busca.trim() !== '') {
+      carregarDebounced(busca) 
+    } else {
+      carregar('')
+    }
+  }, [busca, carregarDebounced, carregar])
 
-  // Agrupar por data
+  // Agrupar atendimentos por data
   const grupos = atendimentos.reduce<Record<string, AtendimentoGlobal[]>>((acc, a) => {
     const data = a.data_atendimento
     if (!acc[data]) acc[data] = []
@@ -90,8 +119,8 @@ export default function HistoricoPage() {
   }, {})
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
+    <div className="flex flex-col h-full bg-gray-50">
+      {/* Header com busca */}
       <div className="sticky top-0 z-10 bg-gray-50 px-4 pt-4 pb-3">
         <h1 className="text-xl font-bold text-gray-900 mb-3">Histórico</h1>
         <div className="relative">
@@ -109,7 +138,7 @@ export default function HistoricoPage() {
         </div>
       </div>
 
-      {/* Lista agrupada por data */}
+      {/* Lista de atendimentos */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {carregando ? (
           <div className="space-y-3 mt-2">
