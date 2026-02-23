@@ -1,9 +1,39 @@
 // src/lib/hooks/useFinanceiro.ts
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { FinanceiroParcela, FinanceiroLancamento } from '@/lib/supabase/types'
+import { FinanceiroParcela } from '@/lib/supabase/types'
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
+// ─── Tipos das Queries ────────────────────────────────────────────────────────
+
+interface LancamentoRow {
+  id: string
+  tipo: 'receita' | 'despesa'
+  descricao: string
+  valor_total: number
+  paciente_id?: string | null
+  atendimento_id?: string | null
+}
+
+interface ParcelaRow {
+  id: string
+  lancamento_id: string
+  clinica_id: string
+  numero: number
+  valor: number
+  valor_pago: number | null
+  data_vencimento: string
+  data_pagamento: string | null
+  status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
+  created_at: string
+  updated_at: string
+}
+
+interface PacienteRow {
+  id: string
+  nome: string
+}
+
+// ─── Tipos Exportados ─────────────────────────────────────────────────────────
 
 export interface MetricasMensais {
   totalRecebido: number
@@ -12,7 +42,9 @@ export interface MetricasMensais {
   saldo: number
 }
 
-export interface ParcelaComLancamento extends FinanceiroParcela {
+
+export interface ParcelaComLancamento extends Omit<FinanceiroParcela, 'status'> {
+  status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
   lancamento: {
     id: string
     descricao: string
@@ -33,7 +65,6 @@ export interface Inadimplente {
 // ─── Hook principal ───────────────────────────────────────────────────────────
 
 export function useFinanceiro(clinicaId: string, mes?: string) {
-  // mes = "2025-02"
   const [metricas, setMetricas] = useState<MetricasMensais>({
     totalRecebido: 0,
     totalPendente: 0,
@@ -44,12 +75,11 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
   const [carregando, setCarregando] = useState(true)
 
   const mesAtual = mes ?? new Date().toISOString().slice(0, 7)
-  const [anoMes] = mesAtual.split('-')
   const ano = Number(mesAtual.split('-')[0])
   const mesNum = Number(mesAtual.split('-')[1])
 
   const inicioMes = `${mesAtual}-01`
-  const fimMes = new Date(ano, mesNum, 0).toISOString().split('T')[0] // último dia
+  const fimMes = new Date(ano, mesNum, 0).toISOString().split('T')[0]
 
   const carregar = useCallback(async () => {
     if (!clinicaId) return
@@ -58,31 +88,37 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     const supabase = createClient()
 
     // Buscar todos os lançamentos do mês com parcelas
-    const { data: lancamentos } = await supabase
+    const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, tipo, descricao, valor_total')
       .eq('clinica_id', clinicaId)
 
-    const lancIds = (lancamentos ?? []).map((l) => l.id)
-    const lancMap = Object.fromEntries((lancamentos ?? []).map((l) => [l.id, l]))
+    const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
+    const lancIds = lancamentos.map((l) => l.id)
+    const lancMap: Record<string, LancamentoRow> = Object.fromEntries(
+      lancamentos.map((l) => [l.id, l])
+    )
 
     // Parcelas com vencimento neste mês
-    const { data: parcelasMes } = lancIds.length > 0
-      ? await supabase
-          .from('financeiro_parcelas')
-          .select('*')
-          .eq('clinica_id', clinicaId)
-          .in('lancamento_id', lancIds)
-          .gte('data_vencimento', inicioMes)
-          .lte('data_vencimento', fimMes)
-      : { data: [] }
+    let parcelasMes: ParcelaRow[] = []
+    if (lancIds.length > 0) {
+      const { data: parcelasMesRaw } = await supabase
+        .from('financeiro_parcelas')
+        .select('*')
+        .eq('clinica_id', clinicaId)
+        .in('lancamento_id', lancIds)
+        .gte('data_vencimento', inicioMes)
+        .lte('data_vencimento', fimMes)
+
+      parcelasMes = (parcelasMesRaw ?? []) as unknown as ParcelaRow[]
+    }
 
     // Calcular métricas
     let totalRecebido = 0
     let totalPendente = 0
     let totalDespesas = 0
 
-    for (const p of parcelasMes ?? []) {
+    for (const p of parcelasMes) {
       const lanc = lancMap[p.lancamento_id]
       if (!lanc) continue
 
@@ -114,25 +150,28 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     const hoje = new Date().toISOString().split('T')[0]
     const em7Dias = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    const { data: proxVenc } = lancIds.length > 0
-      ? await supabase
-          .from('financeiro_parcelas')
-          .select('*')
-          .eq('clinica_id', clinicaId)
-          .in('lancamento_id', lancIds)
-          .in('status', ['pendente', 'pago_parcial'])
-          .gte('data_vencimento', hoje)
-          .lte('data_vencimento', em7Dias)
-          .order('data_vencimento')
-          .limit(10)
-      : { data: [] }
+    let proxVenc: ParcelaRow[] = []
+    if (lancIds.length > 0) {
+      const { data: proxVencRaw } = await supabase
+        .from('financeiro_parcelas')
+        .select('*')
+        .eq('clinica_id', clinicaId)
+        .in('lancamento_id', lancIds)
+        .in('status', ['pendente', 'pago_parcial'])
+        .gte('data_vencimento', hoje)
+        .lte('data_vencimento', em7Dias)
+        .order('data_vencimento')
+        .limit(10)
+
+      proxVenc = (proxVencRaw ?? []) as unknown as ParcelaRow[]
+    }
 
     // Enriquecer com dados do lançamento e paciente
-    const proxComPaciente = await enriquecerParcelas(proxVenc ?? [], clinicaId)
+    const proxComPaciente = await enriquecerParcelas(proxVenc, clinicaId)
     setProximosVencimentos(proxComPaciente)
 
     setCarregando(false)
-  }, [clinicaId, mes])
+  }, [clinicaId, mesAtual, inicioMes, fimMes])
 
   useEffect(() => {
     carregar()
@@ -152,26 +191,29 @@ export function useInadimplentes(clinicaId: string) {
     setCarregando(true)
 
     const supabase = createClient()
-    const hoje = new Date().toISOString().split('T')[0]
 
     // Parcelas vencidas de receitas
-    const { data: lancamentos } = await supabase
+    const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, descricao, paciente_id, atendimento_id, tipo')
       .eq('clinica_id', clinicaId)
       .eq('tipo', 'receita')
       .not('paciente_id', 'is', null)
 
-    const lancIds = (lancamentos ?? []).map((l) => l.id)
+    const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
+    const lancIds = lancamentos.map((l) => l.id)
+
     if (lancIds.length === 0) {
       setInadimplentes([])
       setCarregando(false)
       return
     }
 
-    const lancMap = Object.fromEntries((lancamentos ?? []).map((l) => [l.id, l]))
+    const lancMap: Record<string, LancamentoRow> = Object.fromEntries(
+      lancamentos.map((l) => [l.id, l])
+    )
 
-    const { data: parcelas } = await supabase
+    const { data: parcelasRaw } = await supabase
       .from('financeiro_parcelas')
       .select('*')
       .eq('clinica_id', clinicaId)
@@ -179,34 +221,53 @@ export function useInadimplentes(clinicaId: string) {
       .eq('status', 'vencido')
       .order('data_vencimento')
 
-    if (!parcelas || parcelas.length === 0) {
+    const parcelas = (parcelasRaw ?? []) as unknown as ParcelaRow[]
+
+    if (parcelas.length === 0) {
       setInadimplentes([])
       setCarregando(false)
       return
     }
 
-    // Enriquecer
-    const comLancamento = parcelas.map((p) => ({
-      ...p,
-      lancamento: lancMap[p.lancamento_id],
-      paciente_nome: null as string | null,
-    })) as ParcelaComLancamento[]
+    // Enriquecer com lançamento
+    const comLancamento: ParcelaComLancamento[] = parcelas.map((p) => {
+      const lanc = lancMap[p.lancamento_id]
+      return {
+        ...p,
+        lancamento: {
+          id: lanc?.id ?? '',
+          descricao: lanc?.descricao ?? '',
+          tipo: lanc?.tipo ?? 'receita',
+          paciente_id: lanc?.paciente_id ?? null,
+          atendimento_id: lanc?.atendimento_id ?? null,
+        },
+        paciente_nome: null,
+      }
+    })
 
     // Buscar nomes dos pacientes
-    const pacienteIds = [...new Set(
-      comLancamento.map((p) => p.lancamento?.paciente_id).filter(Boolean) as string[]
-    )]
+    const pacienteIds = [
+      ...new Set(
+        comLancamento
+          .map((p) => p.lancamento.paciente_id)
+          .filter((id): id is string => id !== null && id !== undefined)
+      ),
+    ]
 
-    const { data: pacientes } = await supabase
-      .from('pacientes')
-      .select('id, nome')
-      .in('id', pacienteIds)
+    let pacienteMap: Record<string, string> = {}
+    if (pacienteIds.length > 0) {
+      const { data: pacientesRaw } = await supabase
+        .from('pacientes')
+        .select('id, nome')
+        .in('id', pacienteIds)
 
-    const pacienteMap = Object.fromEntries((pacientes ?? []).map((p) => [p.id, p.nome]))
+      const pacientes = (pacientesRaw ?? []) as unknown as PacienteRow[]
+      pacienteMap = Object.fromEntries(pacientes.map((p) => [p.id, p.nome]))
+    }
 
-    const parcelasComNome = comLancamento.map((p) => ({
+    const parcelasComNome: ParcelaComLancamento[] = comLancamento.map((p) => ({
       ...p,
-      paciente_nome: p.lancamento?.paciente_id
+      paciente_nome: p.lancamento.paciente_id
         ? (pacienteMap[p.lancamento.paciente_id] ?? null)
         : null,
     }))
@@ -214,7 +275,7 @@ export function useInadimplentes(clinicaId: string) {
     // Agrupar por paciente
     const grupos: Record<string, Inadimplente> = {}
     for (const p of parcelasComNome) {
-      const pacId = p.lancamento?.paciente_id
+      const pacId = p.lancamento.paciente_id
       if (!pacId) continue
 
       if (!grupos[pacId]) {
@@ -245,6 +306,11 @@ export function useInadimplentes(clinicaId: string) {
 
 // ─── Operações de baixa ───────────────────────────────────────────────────────
 
+interface ParcelaValorRow {
+  id: string
+  valor: number
+}
+
 export async function baixarParcela(
   parcelaId: string,
   valorPago?: number
@@ -252,12 +318,13 @@ export async function baixarParcela(
   const supabase = createClient()
   const hoje = new Date().toISOString().split('T')[0]
 
-  const { data: parcela } = await supabase
+  const { data: parcelaRaw } = await supabase
     .from('financeiro_parcelas')
     .select('valor')
     .eq('id', parcelaId)
     .single()
 
+  const parcela = parcelaRaw as unknown as { valor: number } | null
   if (!parcela) return false
 
   const pago = valorPago ?? parcela.valor
@@ -287,15 +354,16 @@ export async function baixarParcelasEmLote(parcelaIds: string[]): Promise<boolea
     })
     .in('id', parcelaIds)
 
-  // Para baixa em lote, valor_pago = valor original (buscar depois se necessário)
   if (!error) {
     // Atualizar valor_pago para cada parcela
-    const { data: parcelas } = await supabase
+    const { data: parcelasRaw } = await supabase
       .from('financeiro_parcelas')
       .select('id, valor')
       .in('id', parcelaIds)
 
-    if (parcelas) {
+    const parcelas = (parcelasRaw ?? []) as unknown as ParcelaValorRow[]
+
+    if (parcelas.length > 0) {
       await Promise.all(
         parcelas.map((p) =>
           supabase
@@ -316,6 +384,7 @@ export interface CriarLancamentoInput {
   clinicaId: string
   pacienteId?: string
   atendimentoId?: string
+  orcamentoId?: string
   tipo: 'receita' | 'despesa'
   descricao: string
   valorTotal: number
@@ -323,12 +392,16 @@ export interface CriarLancamentoInput {
   primeiroVencimento: string // "YYYY-MM-DD"
 }
 
+interface LancamentoCriadoRow {
+  id: string
+}
+
 export async function criarLancamento(
   input: CriarLancamentoInput
 ): Promise<{ sucesso: boolean; erro?: string }> {
   const supabase = createClient()
 
-  const { data: lancamento, error: lancErr } = await supabase
+  const { data: lancamentoRaw, error: lancErr } = await supabase
     .from('financeiro_lancamentos')
     .insert({
       clinica_id: input.clinicaId,
@@ -339,8 +412,10 @@ export async function criarLancamento(
       valor_total: input.valorTotal,
       num_parcelas: input.numParcelas,
     })
-    .select()
+    .select('id')
     .single()
+
+  const lancamento = lancamentoRaw as unknown as LancamentoCriadoRow | null
 
   if (lancErr || !lancamento) {
     return { sucesso: false, erro: 'Erro ao criar lançamento' }
@@ -384,8 +459,16 @@ export async function criarLancamento(
 
 // ─── Utilitário ──────────────────────────────────────────────────────────────
 
+interface LancamentoEnriquecerRow {
+  id: string
+  descricao: string
+  tipo: 'receita' | 'despesa'
+  paciente_id: string | null
+  atendimento_id: string | null
+}
+
 async function enriquecerParcelas(
-  parcelas: FinanceiroParcela[],
+  parcelas: ParcelaRow[],
   clinicaId: string
 ): Promise<ParcelaComLancamento[]> {
   if (parcelas.length === 0) return []
@@ -393,29 +476,47 @@ async function enriquecerParcelas(
 
   const lancIds = [...new Set(parcelas.map((p) => p.lancamento_id))]
 
-  const { data: lancamentos } = await supabase
+  const { data: lancamentosRaw } = await supabase
     .from('financeiro_lancamentos')
     .select('id, descricao, tipo, paciente_id, atendimento_id')
     .in('id', lancIds)
 
-  const lancMap = Object.fromEntries((lancamentos ?? []).map((l) => [l.id, l]))
+  const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoEnriquecerRow[]
+  const lancMap: Record<string, LancamentoEnriquecerRow> = Object.fromEntries(
+    lancamentos.map((l) => [l.id, l])
+  )
 
-  const pacienteIds = [...new Set(
-    (lancamentos ?? []).map((l) => l.paciente_id).filter(Boolean) as string[]
-  )]
+  const pacienteIds = [
+    ...new Set(
+      lancamentos
+        .map((l) => l.paciente_id)
+        .filter((id): id is string => id !== null && id !== undefined)
+    ),
+  ]
 
-  const { data: pacientes } = pacienteIds.length > 0
-    ? await supabase.from('pacientes').select('id, nome').in('id', pacienteIds)
-    : { data: [] }
+  let pacienteMap: Record<string, string> = {}
+  if (pacienteIds.length > 0) {
+    const { data: pacientesRaw } = await supabase
+      .from('pacientes')
+      .select('id, nome')
+      .in('id', pacienteIds)
 
-  const pacienteMap = Object.fromEntries((pacientes ?? []).map((p) => [p.id, p.nome]))
+    const pacientes = (pacientesRaw ?? []) as unknown as PacienteRow[]
+    pacienteMap = Object.fromEntries(pacientes.map((p) => [p.id, p.nome]))
+  }
 
   return parcelas.map((p) => {
     const lanc = lancMap[p.lancamento_id]
     return {
       ...p,
-      lancamento: lanc,
+      lancamento: {
+        id: lanc?.id ?? '',
+        descricao: lanc?.descricao ?? '',
+        tipo: lanc?.tipo ?? 'receita',
+        paciente_id: lanc?.paciente_id ?? null,
+        atendimento_id: lanc?.atendimento_id ?? null,
+      },
       paciente_nome: lanc?.paciente_id ? (pacienteMap[lanc.paciente_id] ?? null) : null,
-    } as ParcelaComLancamento
+    }
   })
 }

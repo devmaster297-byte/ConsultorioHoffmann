@@ -76,14 +76,14 @@ export default function OrcamentosPage() {
     }
 
     // Buscar itens
-    const orcIds = orcs.map((o) => o.id)
+    const orcIds = orcs.map((o: { id: string }) => o.id)
     const { data: todosItens } = await supabase
       .from('orcamento_itens')
       .select('*')
       .in('orcamento_id', orcIds)
 
     const itensPorOrc: Record<string, ItemOrcamento[]> = {}
-    todosItens?.forEach((item) => {
+    todosItens?.forEach((item: any) => {
       if (!itensPorOrc[item.orcamento_id]) itensPorOrc[item.orcamento_id] = []
       itensPorOrc[item.orcamento_id].push({
         id: item.id,
@@ -94,7 +94,7 @@ export default function OrcamentosPage() {
       })
     })
 
-    setOrcamentos(orcs.map((o) => ({
+    setOrcamentos(orcs.map((o: Omit<Orcamento, 'itens' | 'valor_total'>) => ({
       ...o,
       itens: itensPorOrc[o.id] ?? [],
       valor_total: (itensPorOrc[o.id] ?? []).reduce((s, i) => s + i.valor, 0),
@@ -175,10 +175,12 @@ export default function OrcamentosPage() {
   async function aprovarEGerarCobranca(orc: Orcamento) {
     if (!clinicaId) return
     await mudarStatus(orc.id, 'aprovado')
-    // Navegar para o financeiro/lancamento com dados pré-preenchidos
+    const descricao = orc.itens.length > 0
+      ? orc.itens.map(i => i.procedimento_nome).join(', ')
+      : 'Orçamento aprovado'
     const params = new URLSearchParams({
-      paciente_id: pacienteId,
-      descricao: `Orçamento aprovado`,
+      paciente: pacienteId,
+      descricao: encodeURIComponent(descricao),
       valor: orc.valor_total.toString(),
     })
     router.push(`/financeiro/lancamento?${params.toString()}`)
@@ -286,7 +288,10 @@ export default function OrcamentosPage() {
                   <div className="border-t border-gray-100 flex">
                     {orc.status === 'aprovado' && (
                       <button
-                        onClick={() => router.push(`/financeiro/lancamento?paciente_id=${pacienteId}&valor=${orc.valor_total}&descricao=Orçamento`)}
+                        onClick={() => {
+                          const desc = orc.itens.length > 0 ? orc.itens.map(i => i.procedimento_nome).join(', ') : 'Orçamento'
+                          router.push(`/financeiro/lancamento?paciente=${pacienteId}&valor=${orc.valor_total}&descricao=${encodeURIComponent(desc)}`)
+                        }}
                         className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium text-blue-600 active:bg-blue-50"
                       >
                         Gerar cobrança

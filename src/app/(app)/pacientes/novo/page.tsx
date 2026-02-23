@@ -39,7 +39,7 @@ export default function NovoAtendimentoPage() {
       .eq('clinica_id', clinicaId)
       .eq('ativo', true)
       .order('nome')
-      .then(({ data }) => setProcedimentos(data ?? []))
+      .then(({ data }: { data: Procedimento[] | null }) => setProcedimentos(data ?? []))
   }, [clinicaId])
 
   // Auto-preencher valor ao selecionar procedimento

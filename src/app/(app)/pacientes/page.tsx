@@ -43,7 +43,7 @@ export default function PacientesPage() {
       setPacientes(lista)
 
       if (lista.length > 0) {
-        const ids = lista.map((p) => p.id)
+        const ids = lista.map((p: Paciente) => p.id)
         const status = await calcularStatusEmBatch(ids, clinicaId)
         setStatusMap(status)
       }

@@ -32,8 +32,11 @@ export default function LancamentoPage() {
   const searchParams = useSearchParams()
   const { clinicaId } = useAuthStore()
 
-  const pacienteIdParam = searchParams.get('paciente')
+  const pacienteIdParam    = searchParams.get('paciente')
   const atendimentoIdParam = searchParams.get('atendimento')
+  const orcamentoIdParam   = searchParams.get('orcamento')
+  const valorParam         = searchParams.get('valor')
+  const descricaoParam     = searchParams.get('descricao')
 
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -61,8 +64,17 @@ export default function LancamentoPage() {
     'tipo',
   ])
 
-  // Carregar paciente pré-selecionado via query param
+  // Pré-preencher campos vindos de orçamento ou atendimento
   useEffect(() => {
+    if (valorParam)    setValue('valor_total', valorParam)
+    if (descricaoParam) setValue('descricao', decodeURIComponent(descricaoParam))
+  }, [valorParam, descricaoParam, setValue])
+
+  // Carregar paciente pré-selecionado e pré-preencher campos via query params
+  useEffect(() => {
+    if (descricaoParam) setValue('descricao', descricaoParam)
+    if (valorParam)     setValue('valor_total', valorParam)
+
     if (!pacienteIdParam) return
     async function buscarPaciente() {
       const supabase = createClient()
@@ -74,7 +86,7 @@ export default function LancamentoPage() {
       if (data) setPacienteSelecionado(data)
     }
     buscarPaciente()
-  }, [pacienteIdParam])
+  }, [pacienteIdParam, descricaoParam, valorParam])
 
   // Gerar preview das parcelas
   useEffect(() => {
@@ -131,6 +143,7 @@ export default function LancamentoPage() {
       clinicaId,
       pacienteId: pacienteSelecionado?.id ?? pacienteIdParam ?? undefined,
       atendimentoId: atendimentoIdParam ?? undefined,
+      orcamentoId: orcamentoIdParam ?? undefined,
       tipo: data.tipo,
       descricao: data.descricao,
       valorTotal: parseFloat(data.valor_total),
@@ -165,7 +178,7 @@ export default function LancamentoPage() {
         <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-gray-100">
           <ArrowLeft className="h-5 w-5 text-gray-600" />
         </button>
-        <h1 className="font-semibold text-gray-900">Novo Lançamento</h1>
+        <h1 className="font-semibold text-gray-900">{orcamentoIdParam ? "Cobrança do Orçamento" : "Novo Lançamento"}</h1>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex-1 px-4 py-5 space-y-4">

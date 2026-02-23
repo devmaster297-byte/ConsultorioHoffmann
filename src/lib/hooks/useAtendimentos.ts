@@ -58,17 +58,17 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       return
     }
 
-    const atendIds = atend.map((a) => a.id)
+    const atendIds = atend.map((a: typeof atend[number]) => a.id)
 
     // Buscar nomes dos dentistas separadamente
-    const dentistaIds = [...new Set(atend.map((a) => a.dentista_id).filter(Boolean))] as string[]
+    const dentistaIds = [...new Set(atend.map((a: typeof atend[number]) => a.dentista_id).filter(Boolean))] as string[]
     const dentistaMap: Record<string, string> = {}
     if (dentistaIds.length > 0) {
       const { data: dentistas } = await supabase
         .from('usuarios')
         .select('id, nome')
         .in('id', dentistaIds)
-      dentistas?.forEach((d) => { dentistaMap[d.id] = d.nome })
+      dentistas?.forEach((d: { id: string; nome: string }) => { dentistaMap[d.id] = d.nome })
     }
 
     // Buscar lançamentos financeiros vinculados
@@ -78,9 +78,9 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       .in('atendimento_id', atendIds)
       .eq('clinica_id', clinicaId)
 
-    const lancamentoIds = lancamentos?.map((l) => l.id) ?? []
+    const lancamentoIds = lancamentos?.map((l: { id: string }) => l.id) ?? []
     const lancAtendMap = Object.fromEntries(
-      (lancamentos ?? []).map((l) => [l.id, l.atendimento_id])
+      (lancamentos ?? []).map((l: { id: string; atendimento_id: string }) => [l.id, l.atendimento_id])
     )
 
     // Buscar parcelas
@@ -92,7 +92,7 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       : { data: [] }
 
     const parcelasAtend: Record<string, string[]> = {}
-    parcelas?.forEach((p) => {
+    parcelas?.forEach((p: { lancamento_id: string; status: string }) => {
       const atendId = lancAtendMap[p.lancamento_id]
       if (atendId) {
         if (!parcelasAtend[atendId]) parcelasAtend[atendId] = []
@@ -107,14 +107,14 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       .in('atendimento_id', atendIds)
 
     const rxPorAtend: Record<string, number> = {}
-    rxCounts?.forEach((rx) => {
+    rxCounts?.forEach((rx: { atendimento_id: string }) => {
       if (rx.atendimento_id) {
         rxPorAtend[rx.atendimento_id] = (rxPorAtend[rx.atendimento_id] ?? 0) + 1
       }
     })
 
     // Montar resultado
-    const resultado: AtendimentoDetalhado[] = atend.map((a) => {
+    const resultado: AtendimentoDetalhado[] = atend.map((a: typeof atend[number]) => {
       const statusParcelas = parcelasAtend[a.id] ?? []
       let status_pagamento: StatusPagamento = 'aberto'
       if (statusParcelas.length > 0) {
