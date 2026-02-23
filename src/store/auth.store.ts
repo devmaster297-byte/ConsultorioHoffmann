@@ -18,7 +18,7 @@ export const useAuthStore = create<AuthState>()(
         set({ usuario, clinicaId: usuario?.clinica_id ?? null }),
     }),
     {
-      name: 'dentesoft-auth', // chave no localStorage
+      name: 'hoffmann-auth', // chave no localStorage
       // Só persiste os dados, não a função
       partialize: (state) => ({
         usuario: state.usuario,

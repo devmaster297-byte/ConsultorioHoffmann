@@ -67,7 +67,7 @@ export default function LoginPage() {
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white text-2xl shadow-lg">
             🦷
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">DenteSoft</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Consultório Hoffmann</h1>
           <p className="text-sm text-gray-500 mt-1">Gestão simples para seu consultório</p>
         </div>
 

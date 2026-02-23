@@ -1,6 +1,6 @@
 {
   "name": "Consultório Hoffmann",
-  "short_name": "Consultório Hoffmann",
+  "short_name": "C. Hoffmann",
   "description": "Gestão simples para consultório odontológico",
   "start_url": "/pacientes",
   "display": "standalone",

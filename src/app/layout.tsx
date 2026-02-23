@@ -7,7 +7,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'DenteSoft',
+  title: 'Consutório Hoffmann',
   description: 'Gestão simples para consultório odontológico',
 }
 
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color"    content="#2563eb" />
         <meta name="mobile-web-app-capable"      content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-title"  content="DenteSoft" />
+        <meta name="apple-mobile-web-app-title"  content="Consutório Hoffmann" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
       <body className={`${inter.className} antialiased`}>

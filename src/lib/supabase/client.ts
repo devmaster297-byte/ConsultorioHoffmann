@@ -12,7 +12,7 @@ export function createClient() {
     {
       auth: {
         storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-        storageKey: 'dentesoft-supabase-session',
+        storageKey: 'hoffmann-supabase-session',
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
