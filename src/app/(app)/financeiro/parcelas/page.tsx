@@ -11,6 +11,20 @@ import { ParcelaItem } from '@/components/financeiro/ParcelaItem'
 import { ModalPagamentoParcial } from '@/components/financeiro/ModalPagamentoParcial'
 import { formatarMoeda } from '@/lib/utils'
 
+// Tipos auxiliares para evitar o erro de 'any' implícito no map
+interface LancamentoBasico {
+  id: string
+  descricao: string
+  tipo: 'receita' | 'despesa'
+  paciente_id: string | null
+  atendimento_id: string | null
+}
+
+interface PacienteBasico {
+  id: string
+  nome: string
+}
+
 type FiltroStatus = 'pendente' | 'vencido' | 'pago' | 'pago_parcial' | 'todos'
 
 export default function ParcelasPage() {
@@ -27,13 +41,15 @@ export default function ParcelasPage() {
 
     const supabase = createClient()
 
-    // Buscar lançamentos
-    const { data: lancamentos } = await supabase
+    // Buscar IDs dos lançamentos da clínica
+    const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id')
       .eq('clinica_id', clinicaId)
 
-    const lancIds = (lancamentos ?? []).map((l) => l.id)
+    const lancamentos = (lancamentosRaw || []) as { id: string }[]
+    const lancIds = lancamentos.map((l) => l.id) // Corrigido: l agora tem tipo
+    
     if (lancIds.length === 0) {
       setParcelas([])
       setCarregando(false)
@@ -52,27 +68,31 @@ export default function ParcelasPage() {
       req = req.eq('status', filtro)
     }
 
-    const { data: parc } = await req
+    const { data: parcRaw } = await req
+    const parc = (parcRaw || []) as any[] // Usamos as parcelas brutas para enriquecer
 
-    // Enriquecer
+    // Enriquecer dados
     const supabase2 = createClient()
-    const lancIds2 = [...new Set((parc ?? []).map((p) => p.lancamento_id))]
+    const lancIdsUnicos = [...new Set(parc.map((p) => p.lancamento_id))]
 
-    const { data: lancs } = await supabase2
+    const { data: lancsRaw } = await supabase2
       .from('financeiro_lancamentos')
       .select('id, descricao, tipo, paciente_id, atendimento_id')
-      .in('id', lancIds2)
+      .in('id', lancIdsUnicos)
 
-    const lancMap = Object.fromEntries((lancs ?? []).map((l) => [l.id, l]))
-    const pacienteIds = [...new Set((lancs ?? []).map((l) => l.paciente_id).filter(Boolean) as string[])]
+    const lancs = (lancsRaw || []) as LancamentoBasico[]
+    const lancMap = Object.fromEntries(lancs.map((l) => [l.id, l]))
+    
+    const pacienteIds = [...new Set(lancs.map((l) => l.paciente_id).filter(Boolean) as string[])]
 
-    const { data: pacientes } = pacienteIds.length > 0
+    const { data: pacientesRaw } = pacienteIds.length > 0
       ? await supabase2.from('pacientes').select('id, nome').in('id', pacienteIds)
       : { data: [] }
 
-    const pacienteMap = Object.fromEntries((pacientes ?? []).map((p) => [p.id, p.nome]))
+    const pacientes = (pacientesRaw || []) as PacienteBasico[]
+    const pacienteMap = Object.fromEntries(pacientes.map((p) => [p.id, p.nome]))
 
-    const enriquecidas = (parc ?? []).map((p) => {
+    const enriquecidas = parc.map((p) => {
       const lanc = lancMap[p.lancamento_id]
       return {
         ...p,
@@ -116,7 +136,7 @@ export default function ParcelasPage() {
         <h1 className="flex-1 font-semibold text-gray-900">Parcelas</h1>
         {parcelas.length > 0 && (
           <span className="text-xs text-gray-400">
-            {formatarMoeda(parcelas.reduce((acc, p) => acc + p.valor - (p.valor_pago ?? 0), 0))}
+            Pendente: {formatarMoeda(parcelas.reduce((acc, p) => acc + p.valor - (p.valor_pago ?? 0), 0))}
           </span>
         )}
       </div>
