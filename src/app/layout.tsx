@@ -7,8 +7,14 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Consultório Hoffmann',
+  title: 'DenteSoft',
   description: 'Gestão simples para consultório odontológico',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'DenteSoft',
+  },
 }
 
 export const viewport: Viewport = {
@@ -22,6 +28,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
+      <head>
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+      </head>
       <body className={`${inter.className} antialiased`}>
         <AuthProvider>{children}</AuthProvider>
       </body>
