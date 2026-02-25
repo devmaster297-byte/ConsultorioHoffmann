@@ -53,7 +53,7 @@ function ModalRegistrarPagamento({
     if (lancSelecionado && !valor) {
       setValor(lancSelecionado.valor_pendente.toFixed(2))
     }
-  }, [lancamentoId]) // eslint-disable-line
+  }, [lancamentoId, lancSelecionado, valor])
 
   async function handleSalvar() {
     if (!lancamentoId) { setErro('Selecione um lançamento'); return }
@@ -88,20 +88,23 @@ function ModalRegistrarPagamento({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end bg-black/50"
+      className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onFechar() }}
     >
-      <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '92dvh' }}>
-        {/* Header — fixo no topo */}
-        <div className="flex-shrink-0 flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900">Registrar Pagamento</h2>
-          <button onClick={onFechar} className="p-1 rounded-full text-gray-400 active:bg-gray-100">
-            ✕
+      <div 
+        className="w-full bg-white rounded-t-3xl flex flex-col shadow-2xl transition-all duration-300 ease-out" 
+        style={{ height: 'auto', maxHeight: '94vh' }}
+      >
+        {/* Header — Fixo */}
+        <div className="flex-shrink-0 flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">Registrar Pagamento</h2>
+          <button onClick={onFechar} className="p-2 -mr-2 rounded-full text-gray-400 active:bg-gray-100">
+            <span className="text-xl">✕</span>
           </button>
         </div>
 
         {/* Corpo scrollável */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 overscroll-contain">
           {/* Selecionar Lançamento */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
@@ -235,14 +238,17 @@ function ModalRegistrarPagamento({
           {erro && (
             <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{erro}</div>
           )}
+
+          {/* Espaçador extra para o conteúdo não ficar escondido pelos botões no fim do scroll */}
+          <div className="h-10" />
         </div>
 
-        {/* Botões — fixos na base, fora do scroll */}
-        <div className="flex-shrink-0 px-5 pb-8 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white">
+        {/* Botões — Fixos na base com padding para áreas seguras mobile */}
+        <div className="flex-shrink-0 px-6 pb-10 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
           <button
             type="button"
             onClick={onFechar}
-            className="rounded-xl bg-gray-100 py-3.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
+            className="rounded-2xl bg-gray-100 py-4 text-sm font-bold text-gray-700 active:scale-95 transition-transform"
           >
             Cancelar
           </button>
@@ -250,9 +256,9 @@ function ModalRegistrarPagamento({
             type="button"
             onClick={handleSalvar}
             disabled={salvando || !lancamentoId}
-            className="rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
+            className="rounded-2xl bg-blue-600 py-4 text-sm font-bold text-white disabled:opacity-50 active:scale-95 transition-transform shadow-lg shadow-blue-200"
           >
-            {salvando ? 'Salvando...' : '✓ Registrar'}
+            {salvando ? 'Salvando...' : 'Confirmar'}
           </button>
         </div>
       </div>
@@ -398,14 +404,9 @@ export function FinanceiroAba({ pacienteId, clinicaId }: FinanceiroAbaProps) {
   const [lancamentoModalId, setLancamentoModalId] = useState<string | undefined>(undefined)
 
   // Carregar ao montar
-  useState(() => { recarregar() })
-
-  // Usar useEffect para carregar
-  const [iniciou, setIniciou] = useState(false)
-  if (!iniciou) {
-    setIniciou(true)
+  useEffect(() => {
     recarregar()
-  }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function abrirModalPagamento(lancamentoId?: string) {
     setLancamentoModalId(lancamentoId)
