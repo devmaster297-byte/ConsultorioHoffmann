@@ -87,17 +87,21 @@ function ModalRegistrarPagamento({
   const lancsPendentes = lancamentos.filter((l) => l.valor_pendente > 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/50">
-      <div className="w-full bg-white rounded-t-2xl max-h-[92vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) onFechar() }}
+    >
+      <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '92dvh' }}>
+        {/* Header — fixo no topo */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-900">Registrar Pagamento</h2>
           <button onClick={onFechar} className="p-1 rounded-full text-gray-400 active:bg-gray-100">
             ✕
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-5">
+        {/* Corpo scrollável */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Selecionar Lançamento */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
@@ -231,25 +235,25 @@ function ModalRegistrarPagamento({
           {erro && (
             <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{erro}</div>
           )}
+        </div>
 
-          {/* Botões */}
-          <div className="grid grid-cols-2 gap-3 pb-4">
-            <button
-              type="button"
-              onClick={onFechar}
-              className="rounded-xl bg-gray-100 py-3.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSalvar}
-              disabled={salvando || !lancamentoId}
-              className="rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
-            >
-              {salvando ? 'Salvando...' : '✓ Registrar'}
-            </button>
-          </div>
+        {/* Botões — fixos na base, fora do scroll */}
+        <div className="flex-shrink-0 px-5 pb-8 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white">
+          <button
+            type="button"
+            onClick={onFechar}
+            className="rounded-xl bg-gray-100 py-3.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSalvar}
+            disabled={salvando || !lancamentoId}
+            className="rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
+          >
+            {salvando ? 'Salvando...' : '✓ Registrar'}
+          </button>
         </div>
       </div>
     </div>
