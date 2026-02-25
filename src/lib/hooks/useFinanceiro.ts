@@ -192,10 +192,10 @@ export function useInadimplentes(clinicaId: string) {
 
     const supabase = createClient()
 
-    // Parcelas vencidas de receitas
+    // Lançamentos de receita com paciente vinculado
     const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
-      .select('id, descricao, paciente_id, atendimento_id, tipo')
+      .select('id, descricao, paciente_id, atendimento_id, tipo, valor_total')
       .eq('clinica_id', clinicaId)
       .eq('tipo', 'receita')
       .not('paciente_id', 'is', null)
@@ -213,12 +213,13 @@ export function useInadimplentes(clinicaId: string) {
       lancamentos.map((l) => [l.id, l])
     )
 
+    // Todas as parcelas pendentes, pago_parcial ou vencidas (qualquer saldo aberto)
     const { data: parcelasRaw } = await supabase
       .from('financeiro_parcelas')
       .select('*')
       .eq('clinica_id', clinicaId)
       .in('lancamento_id', lancIds)
-      .eq('status', 'vencido')
+      .in('status', ['pendente', 'pago_parcial', 'vencido'])
       .order('data_vencimento')
 
     const parcelas = (parcelasRaw ?? []) as unknown as ParcelaRow[]
@@ -272,7 +273,7 @@ export function useInadimplentes(clinicaId: string) {
         : null,
     }))
 
-    // Agrupar por paciente
+    // Agrupar por paciente — saldo = valor - valor_pago de cada parcela
     const grupos: Record<string, Inadimplente> = {}
     for (const p of parcelasComNome) {
       const pacId = p.lancamento.paciente_id
@@ -282,17 +283,22 @@ export function useInadimplentes(clinicaId: string) {
         grupos[pacId] = {
           paciente_id: pacId,
           paciente_nome: p.paciente_nome ?? 'Paciente',
-          total_vencido: 0,
+          total_vencido: 0, // aqui vira "saldo pendente"
           parcelas: [],
         }
       }
 
-      grupos[pacId].total_vencido += p.valor - (p.valor_pago ?? 0)
+      // Saldo real de cada parcela
+      const saldoParcela = p.valor - (p.valor_pago ?? 0)
+      grupos[pacId].total_vencido += saldoParcela
       grupos[pacId].parcelas.push(p)
     }
 
-    // Ordenar por total vencido (maior primeiro)
-    const lista = Object.values(grupos).sort((a, b) => b.total_vencido - a.total_vencido)
+    // Ordenar por maior saldo pendente
+    const lista = Object.values(grupos)
+      .filter((g) => g.total_vencido > 0)
+      .sort((a, b) => b.total_vencido - a.total_vencido)
+
     setInadimplentes(lista)
     setCarregando(false)
   }, [clinicaId])

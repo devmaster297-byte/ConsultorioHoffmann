@@ -27,9 +27,10 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { AtendimentoItem } from '@/components/pacientes/AtendimentoItem'
 import { RxGaleria } from '@/components/radiografias/RxGaleria'
 import { RxUploader } from '@/components/radiografias/RxUploader'
+import { FinanceiroAba } from './financeiro/FinanceiroAba'
 import { iniciais, formatarTelefone, formatarData, formatarMoeda } from '@/lib/utils'
 
-type Aba = 'resumo' | 'historico' | 'radiografias'
+type Aba = 'resumo' | 'historico' | 'radiografias' | 'financeiro'
 
 export default function FichaPacientePage() {
   const { id } = useParams<{ id: string }>()
@@ -41,7 +42,6 @@ export default function FichaPacientePage() {
   const [carregandoPaciente, setCarregandoPaciente] = useState(true)
   const [erroCarregar, setErroCarregar] = useState<string | null>(null)
 
-  // Buscar dados do paciente
   const carregarPaciente = useCallback(async () => {
     if (!id || !clinicaId) {
       setCarregandoPaciente(false)
@@ -57,16 +57,12 @@ export default function FichaPacientePage() {
         .single()
 
       if (error || !pac) {
-        console.error('Erro ao carregar paciente:', error)
         setErroCarregar('Paciente não encontrado')
-        // Redirecionar após um tempo
         setTimeout(() => router.push('/pacientes'), 2000)
         return
       }
 
       setPaciente(pac)
-
-      // Calcular status financeiro
       const s = await calcularStatusFinanceiro(id, clinicaId)
       setStatus(s)
     } catch (err) {
@@ -81,7 +77,6 @@ export default function FichaPacientePage() {
     carregarPaciente()
   }, [carregarPaciente])
 
-  // Hooks de atendimentos e radiografias (só ativam quando temos paciente e clinicaId)
   const { atendimentos, carregando: carregandoAtend } = useAtendimentos(
     id ?? '',
     clinicaId ?? ''
@@ -108,13 +103,12 @@ export default function FichaPacientePage() {
 
   if (!paciente) return null
 
-  // Função para debug do clique (opcional)
-  const handleNovoAtendimento = (e: React.MouseEvent) => {
-    console.log('Clicou em + Atendimento, navegando para:', `/pacientes/${id}/atendimento/novo`)
-    // Se o Link não funcionar, podemos usar router.push
-    // e.preventDefault()
-    // router.push(`/pacientes/${id}/atendimento/novo`)
-  }
+  const ABA_CONFIG: { key: Aba; label: string }[] = [
+    { key: 'resumo',       label: 'Resumo'     },
+    { key: 'historico',    label: 'Histórico'  },
+    { key: 'financeiro',   label: 'Financeiro' },
+    { key: 'radiografias', label: 'Raio-X'     },
+  ]
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
@@ -128,17 +122,13 @@ export default function FichaPacientePage() {
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
           <h1 className="flex-1 font-semibold text-gray-900 truncate">{paciente.nome}</h1>
-          <Link
-            href={`/pacientes/${id}/editar`}
-            className="p-2 rounded-full hover:bg-gray-100"
-          >
+          <Link href={`/pacientes/${id}/editar`} className="p-2 rounded-full hover:bg-gray-100">
             <Edit2 className="h-4 w-4 text-gray-500" />
           </Link>
         </div>
 
-        {/* Perfil (igual ao original) */}
+        {/* Perfil */}
         <div className="px-4 py-5">
-          {/* ... (mantido igual) */}
           <div className="flex items-start gap-4">
             <div className="relative h-16 w-16 flex-shrink-0">
               {paciente.foto_url ? (
@@ -190,18 +180,15 @@ export default function FichaPacientePage() {
           )}
         </div>
 
-        {/* Ações rápidas - ATENÇÃO: link corrigido */}
+        {/* Ações rápidas */}
         <div className="grid grid-cols-4 gap-2 px-4 pb-4">
           <button
-  onClick={() => {
-    console.log('Navegando...');
-    router.push(`/pacientes/${id}/atendimento/novo`);
-  }}
-  className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 py-3 px-2 text-white active:bg-blue-700 transition-colors"
->
-  <Plus className="h-5 w-5" />
-  <span className="text-xs font-medium">Atendimento</span>
-</button>
+            onClick={() => router.push(`/pacientes/${id}/atendimento/novo`)}
+            className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 py-3 px-2 text-white active:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            <span className="text-xs font-medium">Atendimento</span>
+          </button>
           <Link
             href={`/pacientes/${id}/radiografias`}
             className="flex flex-col items-center gap-1.5 rounded-xl bg-gray-100 py-3 px-2 text-gray-700 active:bg-gray-200 transition-colors"
@@ -225,38 +212,34 @@ export default function FichaPacientePage() {
           </Link>
         </div>
 
-        {/* Abas (igual original) */}
-        <div className="flex border-t border-gray-100">
-          {(['resumo', 'historico', 'radiografias'] as Aba[]).map((aba) => {
-            const labels: Record<Aba, string> = {
-              resumo: 'Resumo',
-              historico: 'Histórico',
-              radiografias: 'Raio-X',
-            }
-            return (
-              <button
-                key={aba}
-                onClick={() => setAbaAtiva(aba)}
-                className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${
-                  abaAtiva === aba
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500'
-                }`}
-              >
-                {labels[aba]}
-              </button>
-            )
-          })}
+        {/* Abas — 4 abas com scroll horizontal se necessário */}
+        <div className="flex border-t border-gray-100 overflow-x-auto scrollbar-hide">
+          {ABA_CONFIG.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setAbaAtiva(key)}
+              className={`flex-1 min-w-[80px] py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
+                abaAtiva === key
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Conteúdo da aba (mantido igual) */}
+      {/* Conteúdo da aba */}
       <div className="flex-1 px-4 py-4">
         {abaAtiva === 'resumo' && (
           <ResumoAba pacienteId={id} atendimentos={atendimentos} />
         )}
         {abaAtiva === 'historico' && (
           <HistoricoAba atendimentos={atendimentos} pacienteId={id} />
+        )}
+        {abaAtiva === 'financeiro' && clinicaId && (
+          <FinanceiroAba pacienteId={id} clinicaId={clinicaId} />
         )}
         {abaAtiva === 'radiografias' && (
           <RadiografiasAba pacienteId={id} />
@@ -266,7 +249,8 @@ export default function FichaPacientePage() {
   )
 }
 
-// Sub-componentes (mantidos iguais)
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
+
 function ResumoAba({
   pacienteId,
   atendimentos,
@@ -275,7 +259,6 @@ function ResumoAba({
   atendimentos: ReturnType<typeof import('@/lib/hooks/useAtendimentos').useAtendimentos>['atendimentos']
 }) {
   const ultimo = atendimentos[0]
-  // ... (igual)
   return (
     <div className="space-y-4">
       {ultimo ? (
@@ -366,10 +349,8 @@ function HistoricoAba({
 
 function RadiografiasAba({ pacienteId }: { pacienteId: string }) {
   const { clinicaId } = useAuthStore()
-  const { radiografias, carregando, deletarRadiografia, atualizarAnotacao, uploadRadiografia } = useRadiografias(
-    pacienteId,
-    clinicaId ?? ''
-  )
+  const { radiografias, carregando, deletarRadiografia, atualizarAnotacao, uploadRadiografia } =
+    useRadiografias(pacienteId, clinicaId ?? '')
   const [mostrarUploader, setMostrarUploader] = useState(false)
 
   return (
