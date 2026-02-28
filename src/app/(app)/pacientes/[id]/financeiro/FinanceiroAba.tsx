@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatarMoeda, formatarData } from '@/lib/utils'
-import { registrarPagamentoPaciente } from '@/lib/hooks/useFinanceiroPaciente'
+import { registrarPagamentoPaciente, excluirPagamentoParcela } from '@/lib/hooks/useFinanceiroPaciente'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -441,9 +441,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
 
   async function excluirPagamento(parcelaId: string) {
     setExcluindo(true)
-    await createClient().from('financeiro_parcelas').update({
-      status: 'pendente', valor_pago: null, data_pagamento: null,
-    }).eq('id', parcelaId)
+    await excluirPagamentoParcela(parcelaId)
     setExclusaoInfo(null)
     setExcluindo(false)
     await carregar()
