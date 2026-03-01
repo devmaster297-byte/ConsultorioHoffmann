@@ -34,3 +34,6 @@ logs/
 # Supabase (Arquivos locais gerados)
 supabase/.temp/
 supabase/migrations/.empty
+
+# Outros
+scripts/migrar.mjs 
