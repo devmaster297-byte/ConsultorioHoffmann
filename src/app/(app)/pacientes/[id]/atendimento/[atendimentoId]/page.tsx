@@ -41,20 +41,24 @@ export default function DetalheAtendimentoPage() {
   async function carregar() {
     const supabase = createClient()
 
-    const { data: atend } = await supabase
+    const { data: atend, error } = await supabase
       .from('atendimentos')
-      .select(`
-        id,
-        paciente_id,
-        data_atendimento,
-        descricao,
-        procedimento:procedimentos(nome),
-        dentista:usuarios(nome)
-      `)
+      .select('id, paciente_id, data_atendimento, descricao, procedimento_nome, procedimento_id')
       .eq('id', atendimentoId)
       .single()
 
-    if (!atend) { router.back(); return }
+    if (error || !atend) { router.back(); return }
+
+    // Buscar nome do procedimento via tabela se só tiver o id
+    let procedimentoNome = (atend.procedimento_nome as string | null) ?? null
+    if (!procedimentoNome && atend.procedimento_id) {
+      const { data: proc } = await supabase
+        .from('procedimentos')
+        .select('nome')
+        .eq('id', atend.procedimento_id as string)
+        .single()
+      procedimentoNome = (proc as { nome: string } | null)?.nome ?? null
+    }
 
     const { count: totalRx } = await supabase
       .from('radiografias')
@@ -62,12 +66,12 @@ export default function DetalheAtendimentoPage() {
       .eq('atendimento_id', atendimentoId)
 
     setDados({
-      id: atend.id,
-      paciente_id: atend.paciente_id,
-      data_atendimento: atend.data_atendimento,
-      procedimento_nome: (atend.procedimento as { nome: string } | null)?.nome ?? null,
-      descricao: atend.descricao,
-      dentista_nome: (atend.dentista as { nome: string } | null)?.nome ?? null,
+      id: atend.id as string,
+      paciente_id: atend.paciente_id as string,
+      data_atendimento: atend.data_atendimento as string,
+      procedimento_nome: procedimentoNome,
+      descricao: atend.descricao as string | null,
+      dentista_nome: null,
       total_radiografias: totalRx ?? 0,
     })
     setCarregando(false)
