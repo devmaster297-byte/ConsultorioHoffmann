@@ -1,98 +1,58 @@
-/* src/app/globals.css */
+/* src/app/globals.css — Tema Hoffmann Clínica Odontológica e Estética */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Safe area para notch e barra inferior do iOS ─────────────── */
-@layer utilities {
-  .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 1rem);
-  }
-  .pt-safe {
-    padding-top: env(safe-area-inset-top, 0);
-  }
-  .h-dvh {
-    height: 100dvh; /* dynamic viewport height — evita o bug do Safari */
-  }
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
+/* ── Fontes ── */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+/* ── Variáveis da marca Hoffmann ── */
+:root {
+  --hf-black:        #0F0F0F;
+  --hf-black-soft:   #1A1A1A;
+  --hf-charcoal:     #2C2C2C;
+  --hf-gold:         #C9A96E;
+  --hf-gold-light:   #E8D5B0;
+  --hf-gold-pale:    #F5EDD8;
+  --hf-cream:        #FAF8F4;
+  --hf-white:        #FFFFFF;
+  --hf-gray-100:     #F4F2EE;
+  --hf-gray-200:     #E8E4DC;
+  --hf-gray-300:     #C8C2B4;
+  --hf-gray-400:     #9A9286;
+  --hf-gray-500:     #6B6359;
+
+  /* Status */
+  --hf-success:      #4A7C59;
+  --hf-success-bg:   #EEF5F1;
+  --hf-warning:      #8C6D2F;
+  --hf-warning-bg:   #FBF3E2;
+  --hf-danger:       #8C3030;
+  --hf-danger-bg:    #F9ECEC;
+  --hf-info:         #2C5F7A;
+  --hf-info-bg:      #EBF3F8;
 }
 
-/* ── Base ─────────────────────────────────────────────────────── */
-@layer base {
-  * {
-    /* Evita highlight azul em tap no iOS */
-    -webkit-tap-highlight-color: transparent;
-    /* Box-sizing global */
-    box-sizing: border-box;
-  }
+/* ── Reset base ── */
+* { -webkit-tap-highlight-color: transparent; }
 
-  html {
-    /* Evita zoom em inputs no iOS */
-    -webkit-text-size-adjust: 100%;
-  }
-
-  body {
-    @apply bg-gray-50 text-gray-900;
-    /* Previne overscroll/bounce no iOS */
-    overscroll-behavior: none;
-  }
-
-  /* Remove aparência nativa de inputs de data no iOS */
-  input[type="date"] {
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
-  /* Remove setas de input number */
-  input[type="number"]::-webkit-outer-spin-button,
-  input[type="number"]::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  input[type="number"] {
-    -moz-appearance: textfield;
-    appearance: textfield;
-  }
-
-  /* Smooth scroll */
-  html {
-    scroll-behavior: smooth;
-  }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--hf-cream);
+  color: var(--hf-black);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Animações ────────────────────────────────────────────────── */
-@layer utilities {
-  .animate-in {
-    animation: fadeIn 0.2s ease forwards;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .slide-up {
-    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(100%);
-    }
-    to {
-      transform: translateY(0);
-    }
-  }
+/* ── Títulos com Cormorant ── */
+h1, h2, h3, .font-display {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
+
+/* ── Scrollbar elegante ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--hf-gray-300); border-radius: 2px; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
