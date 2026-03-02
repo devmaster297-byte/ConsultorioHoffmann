@@ -129,7 +129,7 @@ function ModalRegistrarPagamento({
       className="fixed inset-0 z-50 flex items-end bg-black/50"
       onClick={(e) => { if (e.target === e.currentTarget) onFechar() }}
     >
-      <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '92dvh' }}>
+      <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: 'calc(100dvh - 80px)' }}>
         {/* Header fixo */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-900">Registrar Pagamento</h2>
@@ -242,7 +242,7 @@ function ModalRegistrarPagamento({
         </div>
 
         {/* Botões fixos na base */}
-        <div className="flex-shrink-0 px-5 pb-8 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white">
+        <div className="flex-shrink-0 px-5 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white" style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1rem))' }}>
           <button type="button" onClick={onFechar}
             className="rounded-xl bg-gray-100 py-3.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
           >Cancelar</button>
@@ -432,11 +432,34 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
   async function excluirOrcamento(id: string) {
     setExcluindo(true)
     const supabase = createClient()
+
+    // Buscar o orçamento para saber o valor
+    const orc = orcamentos.find((o) => o.id === id)
+    if (orc) {
+      // Buscar lançamentos financeiros com mesmo valor vinculados ao paciente
+      const { data: lancsVinculados } = await supabase
+        .from('financeiro_lancamentos')
+        .select('id')
+        .eq('clinica_id', clinicaId)
+        .eq('paciente_id', pacienteId)
+        .eq('valor_total', orc.valor_total)
+        .eq('tipo', 'receita')
+
+      if (lancsVinculados && lancsVinculados.length > 0) {
+        const lancIds = (lancsVinculados as { id: string }[]).map((l) => l.id)
+        // Apagar parcelas e lançamentos vinculados
+        await supabase.from('financeiro_parcelas').delete().in('lancamento_id', lancIds)
+        await supabase.from('financeiro_lancamentos').delete().in('id', lancIds)
+      }
+    }
+
+    // Apagar itens e o orçamento
     await supabase.from('orcamento_itens').delete().eq('orcamento_id', id)
     await supabase.from('orcamentos').delete().eq('id', id)
-    setOrcamentos((prev) => prev.filter((o) => o.id !== id))
+
     setExclusaoInfo(null)
     setExcluindo(false)
+    await carregar()
   }
 
   async function excluirPagamento(parcelaId: string) {
