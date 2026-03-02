@@ -35,7 +35,7 @@ export default function LoginPage() {
 
       {/* Topo com logo */}
       <div className="flex-1 flex flex-col items-center justify-center px-8 pt-16 pb-8">
-        <div style={{ animation: 'fadeIn 0.6s ease forwards' }}>
+        <div className="animate-fade-in">
           <Image
             src="/logo-hoffmann.png"
             alt="Hoffmann"
@@ -53,12 +53,10 @@ export default function LoginPage() {
         </div>
 
         {/* Card de login */}
-        <div className="w-full max-w-sm rounded-2xl p-8 space-y-5"
+        <div className="w-full max-w-sm rounded-2xl p-8 space-y-5 animate-fade-in-up-delay"
           style={{
             background: 'var(--hf-black-soft)',
             border: '1px solid rgba(201,169,110,0.15)',
-            animation: 'fadeInUp 0.7s 0.2s ease forwards',
-            opacity: 0,
           }}>
 
           <div>
@@ -133,15 +131,6 @@ export default function LoginPage() {
         </p>
       </div>
 
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; } to { opacity: 1; }
-        }
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   )
 }
