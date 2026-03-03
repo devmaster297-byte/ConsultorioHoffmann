@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/auth.store'
 
@@ -11,7 +12,14 @@ const ROTAS_PUBLICAS = ['/login']
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setUsuario, usuario } = useAuthStore()
   const [carregando, setCarregando] = useState(true)
+  const [splash, setSplash] = useState(true)
   const pathname = usePathname()
+
+  // Splash screen de 1.6s apenas no carregamento inicial
+  useEffect(() => {
+    const t = setTimeout(() => setSplash(false), 1600)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -21,13 +29,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
 
         if (session?.user) {
-          // Já temos dados válidos no store persistido
           if (usuario?.id === session.user.id && usuario?.clinica_id) {
             setCarregando(false)
             return
           }
 
-          // Buscar perfil (removido o '*' para ser explícito e seguro)
           const { data: usuarioDB } = await supabase
             .from('usuarios')
             .select('id, nome, clinica_id, perfil, ativo, created_at')
@@ -35,7 +41,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .single()
 
           if (usuarioDB) {
-            // Salva o perfil e pega o e-mail direto da sessão do Supabase
             setUsuario(usuarioDB, session.user.email)
           }
           setCarregando(false)
@@ -57,25 +62,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (carregando) {
+  // ── Splash screen ──────────────────────────────────────────────────────────
+  if (splash || carregando) {
     return (
-      <div style={{
-        display: 'flex',
-        height: '100svh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f9fafb',
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 32 }}>🦷</span>
-          <div style={{
-            width: 20,
-            height: 20,
-            borderRadius: '50%',
-            border: '2px solid #3b82f6',
-            borderTopColor: 'transparent',
-            animation: 'spin 0.8s linear infinite',
-          }} />
+      <div
+        className="fixed inset-0 flex flex-col items-center justify-center"
+        style={{ background: 'var(--hf-black)' }}
+      >
+        <div className="animate-fade-in-up flex flex-col items-center">
+          <Image
+            src="/logo-hoffmann.png"
+            alt="Hoffmann"
+            width={180}
+            height={72}
+            className="object-contain"
+            style={{ filter: 'brightness(0) invert(1)' }}
+            priority
+          />
+          <p className="mt-3 text-xs tracking-[0.25em] uppercase"
+            style={{ color: 'var(--hf-gold)', fontWeight: 300 }}>
+            Clínica Odontológica e Estética
+          </p>
+        </div>
+
+        {/* Dots pulsando */}
+        <div className="absolute bottom-14 flex gap-2">
+          {[0, 0.2, 0.4].map((d, i) => (
+            <div
+              key={i}
+              className="h-1.5 w-1.5 rounded-full animate-pulse-dot"
+              style={{ background: 'var(--hf-gold)', animationDelay: `${d}s` }}
+            />
+          ))}
         </div>
       </div>
     )
