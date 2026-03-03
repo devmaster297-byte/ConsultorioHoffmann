@@ -1,7 +1,7 @@
 // src/app/(app)/financeiro/lancamento/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,7 +27,7 @@ interface PacienteSugestao {
   nome: string
 }
 
-export default function LancamentoPage() {
+function LancamentoContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { clinicaId } = useAuthStore()
@@ -384,5 +384,16 @@ export default function LancamentoPage() {
         </div>
       </form>
     </div>
+  )
+}
+export default function LancamentoPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full">
+        <div className="h-8 w-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+      </div>
+    }>
+      <LancamentoContent />
+    </Suspense>
   )
 }
