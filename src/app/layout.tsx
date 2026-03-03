@@ -1,82 +1,35 @@
-// src/app/(app)/layout.tsx
-'use client'
+// src/app/layout.tsx
+import type { Metadata, Viewport } from 'next'
+import './globals.css'
+import { AuthProvider } from '@/components/shared/AuthProvider'
 
-import { usePathname } from 'next/navigation'
-import Link from 'next/link'
-import Image from 'next/image'
-import { Users, History, Scan, DollarSign } from 'lucide-react'
+export const metadata: Metadata = {
+  title: 'Hoffmann | Clínica Odontológica e Estética',
+  description: 'Sistema de gestão clínica',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Hoffmann',
+  },
+}
 
-const NAV = [
-  { href: '/pacientes',    icon: Users,       label: 'Pacientes'  },
-  { href: '/historico',    icon: History,     label: 'Histórico'  },
-  { href: '/radiografias', icon: Scan,        label: 'Raio-X'     },
-  { href: '/financeiro',   icon: DollarSign,  label: 'Financeiro' },
-]
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#0F0F0F',
+}
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-
-  const activeRoute = NAV.find(n =>
-    pathname === n.href || pathname.startsWith(n.href + '/')
-  )?.href
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-dvh" style={{ background: 'var(--hf-cream)' }}>
-
-      {/* ── Top bar com logo ── */}
-      <header
-        className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b"
-        style={{ background: 'var(--hf-white)', borderColor: 'var(--hf-gray-200)' }}
-      >
-        <Image
-          src="/logo-hoffmann.png"
-          alt="Hoffmann"
-          width={110}
-          height={44}
-          className="object-contain"
-        />
-        <p className="text-xs tracking-[0.15em] uppercase"
-          style={{ color: 'var(--hf-gray-400)', fontWeight: 300 }}>
-          Sistema Clínico
-        </p>
-      </header>
-
-      {/* ── Conteúdo ── */}
-      <main className="flex-1 overflow-y-auto">
-        {children}
-      </main>
-
-      {/* ── Navbar inferior ── */}
-      <nav
-        className="flex-shrink-0 border-t"
-        style={{
-          background: 'var(--hf-white)',
-          borderColor: 'var(--hf-gray-200)',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-        }}
-      >
-        <div className="flex">
-          {NAV.map(({ href, icon: Icon, label }) => {
-            const active = activeRoute === href
-            return (
-              <Link key={href} href={href}
-                className="flex-1 flex flex-col items-center gap-1 py-3 relative transition-colors"
-                style={{ color: active ? 'var(--hf-gold)' : 'var(--hf-gray-400)' }}
-              >
-                <Icon className="h-5 w-5" strokeWidth={active ? 2 : 1.5} />
-                <span className="text-[10px] tracking-wide"
-                  style={{ fontWeight: active ? 600 : 400 }}>
-                  {label}
-                </span>
-                {active && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full"
-                    style={{ background: 'var(--hf-gold)' }} />
-                )}
-              </Link>
-            )
-          })}
-        </div>
-      </nav>
-    </div>
+    <html lang="pt-BR">
+      <body>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
   )
 }
