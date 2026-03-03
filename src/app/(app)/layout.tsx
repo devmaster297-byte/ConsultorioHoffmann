@@ -27,16 +27,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b"
         style={{ background: 'var(--hf-white)', borderColor: 'var(--hf-gray-200)' }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo-hoffmann.png"
-          alt="Hoffmann"
-          style={{ height: 36, width: 'auto', objectFit: 'contain' }}
-        />
-        <p className="text-xs tracking-[0.15em] uppercase"
-          style={{ color: 'var(--hf-gray-400)', fontWeight: 300 }}>
-          Sistema Clínico
-        </p>
+
+        <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif' }}>
+          <p style={{ fontSize: 20, fontWeight: 500, letterSpacing: '0.18em', color: 'var(--hf-black)', margin: 0, lineHeight: 1 }}>HOFFMANN</p>
+          <p style={{ fontSize: 8, letterSpacing: '0.2em', color: 'var(--hf-gray-400)', margin: 0, marginTop: 2, fontFamily: 'DM Sans, sans-serif', fontWeight: 300 }}>CLÍNICA ODONTOLÓGICA E ESTÉTICA</p>
+        </div>
+
       </header>
 
       {/* ── Conteúdo ── */}

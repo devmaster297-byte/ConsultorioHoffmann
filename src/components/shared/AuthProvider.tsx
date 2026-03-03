@@ -68,17 +68,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         style={{ background: 'var(--hf-black)' }}
       >
         <div className="animate-fade-in-up flex flex-col items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo-hoffmann.png"
-            alt="Hoffmann"
-            style={{
-              height: 64,
-              width: 'auto',
-              objectFit: 'contain',
-              filter: 'brightness(0) invert(1)',
-            }}
-          />
+          <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', textAlign: 'center' }}>
+            <p style={{ fontSize: 32, fontWeight: 500, letterSpacing: '0.2em', color: '#FFFFFF', margin: 0 }}>HOFFMANN</p>
+            <p style={{ fontSize: 10, letterSpacing: '0.25em', color: 'var(--hf-gold)', marginTop: 4, fontFamily: 'DM Sans, sans-serif', fontWeight: 300 }}>CLÍNICA ODONTOLÓGICA E ESTÉTICA</p>
+          </div>
           <p className="mt-3 text-xs tracking-[0.25em] uppercase"
             style={{ color: 'var(--hf-gold)', fontWeight: 300 }}>
             Clínica Odontológica e Estética

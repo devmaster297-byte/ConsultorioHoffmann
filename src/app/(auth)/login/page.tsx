@@ -3,7 +3,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
@@ -36,14 +35,10 @@ export default function LoginPage() {
       {/* Topo com logo */}
       <div className="flex-1 flex flex-col items-center justify-center px-8 pt-16 pb-8">
         <div className="animate-fade-in">
-          <Image
-            src="/logo-hoffmann.png"
-            alt="Hoffmann"
-            width={160}
-            height={64}
-            className="object-contain mx-auto"
-            style={{ filter: 'brightness(0) invert(1)' }}
-          />
+          <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', textAlign: 'center' }}>
+            <p style={{ fontSize: 36, fontWeight: 500, letterSpacing: '0.2em', color: '#FFFFFF', margin: 0 }}>HOFFMANN</p>
+            <p style={{ fontSize: 10, letterSpacing: '0.25em', color: 'var(--hf-gold)', marginTop: 4, fontFamily: 'DM Sans, sans-serif', fontWeight: 300 }}>CLÍNICA ODONTOLÓGICA E ESTÉTICA</p>
+          </div>
           <div className="mt-2 mb-12 text-center">
             <span className="text-xs tracking-[0.3em] uppercase"
               style={{ color: 'var(--hf-gold)', fontWeight: 300 }}>
