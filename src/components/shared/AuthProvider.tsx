@@ -27,15 +27,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return
           }
 
-          // Buscar perfil
+          // Buscar perfil (removido o '*' para ser explícito e seguro)
           const { data: usuarioDB } = await supabase
             .from('usuarios')
-            .select('*')
+            .select('id, nome, clinica_id, perfil, ativo, created_at')
             .eq('id', session.user.id)
             .single()
 
           if (usuarioDB) {
-            setUsuario(usuarioDB)
+            // Salva o perfil e pega o e-mail direto da sessão do Supabase
+            setUsuario(usuarioDB, session.user.email)
           }
           setCarregando(false)
         } else {
@@ -76,7 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             animation: 'spin 0.8s linear infinite',
           }} />
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
   }

@@ -6,7 +6,8 @@ import { Usuario } from '@/lib/supabase/types'
 interface AuthState {
   usuario: Usuario | null
   clinicaId: string | null
-  setUsuario: (usuario: Usuario | null) => void
+  email: string | null
+  setUsuario: (usuario: Usuario | null, email?: string) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -14,8 +15,13 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       usuario: null,
       clinicaId: null,
-      setUsuario: (usuario) =>
-        set({ usuario, clinicaId: usuario?.clinica_id ?? null }),
+      email: null,
+      setUsuario: (usuario, email) =>
+        set({ 
+          usuario, 
+          clinicaId: usuario?.clinica_id ?? null,
+          email: email ?? null
+        }),
     }),
     {
       name: 'hoffmann-auth', // chave no localStorage
@@ -23,6 +29,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         usuario: state.usuario,
         clinicaId: state.clinicaId,
+        email: state.email
       }),
     }
   )
