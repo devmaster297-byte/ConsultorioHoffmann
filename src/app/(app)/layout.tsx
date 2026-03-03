@@ -36,7 +36,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       const { data: usuario } = await supabase
         .from('usuarios')
-        .select('id, nome, email, clinica_id, perfil')
+        .select('id, nome, clinica_id, perfil')
         .eq('id', session.user.id)
         .single()
 
