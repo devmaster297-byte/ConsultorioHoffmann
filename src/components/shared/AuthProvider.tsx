@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/auth.store'
 
@@ -15,7 +14,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [splash, setSplash] = useState(true)
   const pathname = usePathname()
 
-  // Splash screen de 1.6s apenas no carregamento inicial
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1600)
     return () => clearTimeout(t)
@@ -62,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Splash screen ──────────────────────────────────────────────────────────
+  // ── Splash / loading ───────────────────────────────────────────────────────
   if (splash || carregando) {
     return (
       <div
@@ -70,14 +68,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         style={{ background: 'var(--hf-black)' }}
       >
         <div className="animate-fade-in-up flex flex-col items-center">
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/logo-hoffmann.png"
             alt="Hoffmann"
-            width={180}
-            height={72}
-            className="object-contain"
-            style={{ filter: 'brightness(0) invert(1)' }}
-            priority
+            style={{
+              height: 64,
+              width: 'auto',
+              objectFit: 'contain',
+              filter: 'brightness(0) invert(1)',
+            }}
           />
           <p className="mt-3 text-xs tracking-[0.25em] uppercase"
             style={{ color: 'var(--hf-gold)', fontWeight: 300 }}>
@@ -85,7 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           </p>
         </div>
 
-        {/* Dots pulsando */}
         <div className="absolute bottom-14 flex gap-2">
           {[0, 0.2, 0.4].map((d, i) => (
             <div
