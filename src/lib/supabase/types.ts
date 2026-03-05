@@ -224,7 +224,8 @@ export type Database = {
           clinica_id: string
           paciente_id: string
           atendimento_id: string | null
-          url: string
+          storage_path: string          // ✅ FIX: era 'url', campo correto no banco
+          thumbnail_path: string | null // ✅ FIX: campo adicionado
           anotacao: string | null
           data_exame: string | null
           tipo: 'periapical' | 'panoramico' | 'outro' | null
@@ -235,7 +236,8 @@ export type Database = {
           clinica_id: string
           paciente_id: string
           atendimento_id?: string | null
-          url: string
+          storage_path: string
+          thumbnail_path?: string | null
           anotacao?: string | null
           data_exame?: string | null
           tipo?: 'periapical' | 'panoramico' | 'outro' | null
@@ -246,7 +248,8 @@ export type Database = {
           clinica_id?: string
           paciente_id?: string
           atendimento_id?: string | null
-          url?: string
+          storage_path?: string
+          thumbnail_path?: string | null
           anotacao?: string | null
           data_exame?: string | null
           tipo?: 'periapical' | 'panoramico' | 'outro' | null
