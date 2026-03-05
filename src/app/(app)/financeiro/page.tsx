@@ -26,7 +26,7 @@ function nomeMes(mes: string) {
 interface ParcelaRow {
   id: string
   lancamento_id: string
-  numero_parcela: number
+  numero: number
   valor: number
   valor_pago: number | null
   data_pagamento: string | null
@@ -84,7 +84,7 @@ function useRecebimentos(clinicaId: string, mes: string) {
 
     const { data: parcelas } = await supabase
       .from('financeiro_parcelas')
-      .select('id, lancamento_id, numero_parcela, valor, valor_pago, data_pagamento')
+      .select('id, lancamento_id, numero, valor, valor_pago, data_pagamento')
       .eq('clinica_id', clinicaId)
       .eq('status', 'pago')
       .gte('data_pagamento', inicio)
@@ -131,7 +131,7 @@ function useRecebimentos(clinicaId: string, mes: string) {
           descricao: lanc?.descricao ?? '—',
           valor_pago: p.valor_pago ?? p.valor,
           data_pagamento: p.data_pagamento,
-          num_parcela: p.numero_parcela,
+          num_parcela: p.numero,
           num_total_parcelas: lanc?.num_parcelas ?? 1,
         }
       })

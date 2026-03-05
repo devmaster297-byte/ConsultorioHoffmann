@@ -27,7 +27,6 @@ interface Orcamento {
   valor_total: number
 }
 
-// Interfaces auxiliares para retorno do banco
 interface OrcamentoDB {
   id: string
   status: StatusOrcamento
@@ -51,6 +50,32 @@ const STATUS_CONFIG = {
   recusado: { label: 'Recusado', bg: '#FEE2E2', color: '#991B1B', Icon: X      },
 }
 
+// ─── Modal de confirmação de exclusão ─────────────────────────────────────────
+
+function ModalConfirmarExclusao({
+  mensagem, onConfirmar, onCancelar, carregando,
+}: {
+  mensagem: string
+  onConfirmar: () => void
+  onCancelar: () => void
+  carregando: boolean
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/50">
+      <div className="w-full bg-white rounded-t-2xl p-6 space-y-4">
+        <h2 className="font-bold text-gray-900">Confirmar exclusão</h2>
+        <p className="text-sm text-gray-500">{mensagem}</p>
+        <button onClick={onConfirmar} disabled={carregando}
+          className="w-full rounded-xl bg-red-600 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
+        >{carregando ? 'Excluindo...' : 'Sim, excluir'}</button>
+        <button onClick={onCancelar}
+          className="w-full rounded-xl bg-gray-100 py-3.5 text-sm font-medium text-gray-700"
+        >Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
 export default function OrcamentosPage() {
   const { id: pacienteId } = useParams<{ id: string }>()
   const router = useRouter()
@@ -64,15 +89,20 @@ export default function OrcamentosPage() {
   const [salvando, setSalvando]           = useState(false)
   const [erroForm, setErroForm]           = useState<string | null>(null)
 
+  // ✅ FIX BUG 5+6: estado de exclusão com modal e loading
+  const [exclusaoInfo, setExclusaoInfo] = useState<{
+    id: string
+    mensagem: string
+  } | null>(null)
+  const [excluindo, setExcluindo] = useState(false)
+
   const [observacoes, setObservacoes] = useState('')
   const [itens, setItens] = useState<ItemForm[]>([
     { procedimento_id: '', descricao: '', valor: '' },
   ])
 
-  // Carregar procedimentos corrigido com async/await e tipagem
   useEffect(() => {
     if (!clinicaId) return
-    
     async function buscarProcedimentos() {
       const { data } = await createClient()
         .from('procedimentos')
@@ -80,10 +110,8 @@ export default function OrcamentosPage() {
         .eq('clinica_id', clinicaId)
         .eq('ativo', true)
         .order('nome')
-      
       setProcedimentos((data as Procedimento[]) ?? [])
     }
-
     buscarProcedimentos()
   }, [clinicaId])
 
@@ -96,7 +124,6 @@ export default function OrcamentosPage() {
       .from('pacientes').select('nome').eq('id', pacienteId).single()
     if (pac) setPacienteNome(pac.nome)
 
-    // Tipando o retorno da query de orçamentos
     const { data: orcs, error } = await supabase
       .from('orcamentos')
       .select('*')
@@ -112,7 +139,6 @@ export default function OrcamentosPage() {
       return
     }
 
-    // Tipando o retorno da query de itens
     const { data: todosItens } = await supabase
       .from('orcamento_itens')
       .select('*')
@@ -141,7 +167,6 @@ export default function OrcamentosPage() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  // --- Helpers do formulário ---
   function adicionarItem() {
     setItens(prev => [...prev, { procedimento_id: '', descricao: '', valor: '' }])
   }
@@ -223,11 +248,42 @@ export default function OrcamentosPage() {
     setOrcamentos(prev => prev.map(o => o.id === id ? { ...o, status } : o))
   }
 
-  async function deletar(id: string) {
-    if (!confirm('Excluir este orçamento?')) return
+  // ✅ FIX BUG 1: excluir também apaga os lançamentos financeiros vinculados
+  // ✅ FIX BUG 6: tratamento de erro + loading state via modal
+  async function confirmarExcluir(id: string) {
+    setExcluindo(true)
     const supabase = createClient()
+
+    // 1. Buscar lançamentos vinculados via orcamento_id (FK correta — FIX BUG 2)
+    const { data: lancsVinculados, error: errLancs } = await supabase
+      .from('financeiro_lancamentos')
+      .select('id')
+      .eq('orcamento_id', id)
+
+    if (!errLancs && lancsVinculados && lancsVinculados.length > 0) {
+      const lancIds = (lancsVinculados as { id: string }[]).map((l) => l.id)
+
+      // 2. Apagar parcelas dos lançamentos
+      await supabase.from('financeiro_parcelas').delete().in('lancamento_id', lancIds)
+
+      // 3. Apagar os lançamentos
+      await supabase.from('financeiro_lancamentos').delete().in('id', lancIds)
+    }
+
+    // 4. Apagar itens do orçamento
     await supabase.from('orcamento_itens').delete().eq('orcamento_id', id)
-    await supabase.from('orcamentos').delete().eq('id', id)
+
+    // 5. Apagar o orçamento
+    const { error: errOrc } = await supabase.from('orcamentos').delete().eq('id', id)
+
+    setExcluindo(false)
+    setExclusaoInfo(null)
+
+    if (errOrc) {
+      alert('Erro ao excluir orçamento. Tente novamente.')
+      return
+    }
+
     setOrcamentos(prev => prev.filter(o => o.id !== id))
   }
 
@@ -376,7 +432,7 @@ export default function OrcamentosPage() {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="text-5xl mb-3">📋</div>
             <p className="font-medium text-gray-500">Nenhum orçamento ainda</p>
-            <p className="text-sm text-gray-400 mt-1">Toque em "Novo" para criar</p>
+            <p className="text-sm text-gray-400 mt-1">Toque em &quot;Novo&quot; para criar</p>
           </div>
         ) : (
           orcamentos.map(orc => {
@@ -429,8 +485,12 @@ export default function OrcamentosPage() {
                     >
                       <X className="h-4 w-4" /> Recusar
                     </button>
+                    {/* ✅ FIX BUG 6: usa modal em vez de confirm() nativo */}
                     <button
-                      onClick={() => deletar(orc.id)}
+                      onClick={() => setExclusaoInfo({
+                        id: orc.id,
+                        mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Os lançamentos financeiros vinculados também serão removidos.`,
+                      })}
                       className="flex items-center justify-center gap-1 py-3 text-sm font-medium text-gray-400 active:bg-gray-50"
                     >
                       <Trash2 className="h-4 w-4" /> Excluir
@@ -447,7 +507,10 @@ export default function OrcamentosPage() {
                       Gerar cobrança <ChevronRight className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => deletar(orc.id)}
+                      onClick={() => setExclusaoInfo({
+                        id: orc.id,
+                        mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Os lançamentos financeiros vinculados também serão removidos.`,
+                      })}
                       className="px-4 py-3 text-gray-400 active:bg-gray-50"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -464,7 +527,10 @@ export default function OrcamentosPage() {
                       Reabrir
                     </button>
                     <button
-                      onClick={() => deletar(orc.id)}
+                      onClick={() => setExclusaoInfo({
+                        id: orc.id,
+                        mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Esta ação não pode ser desfeita.`,
+                      })}
                       className="px-4 py-3 text-gray-400 active:bg-gray-50"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -476,6 +542,16 @@ export default function OrcamentosPage() {
           })
         )}
       </div>
+
+      {/* ✅ FIX BUG 6: modal de confirmação consistente com o resto do sistema */}
+      {exclusaoInfo && (
+        <ModalConfirmarExclusao
+          mensagem={exclusaoInfo.mensagem}
+          carregando={excluindo}
+          onCancelar={() => setExclusaoInfo(null)}
+          onConfirmar={() => confirmarExcluir(exclusaoInfo.id)}
+        />
+      )}
     </div>
   )
 }

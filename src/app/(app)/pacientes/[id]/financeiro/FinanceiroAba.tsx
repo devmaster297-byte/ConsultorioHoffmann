@@ -39,12 +39,14 @@ interface Pagamento {
   forma_pagamento: string | null
 }
 
+// ✅ FIX BUG 5: adicionado orcamento_id para vincular corretamente
 interface LancamentoSimplificado {
   id: string
   descricao: string
   valor_total: number
   valor_pago: number
   valor_pendente: number
+  orcamento_id: string | null   // ← ADICIONADO
 }
 
 interface ResumoFinanceiro {
@@ -130,13 +132,11 @@ function ModalRegistrarPagamento({
       onClick={(e) => { if (e.target === e.currentTarget) onFechar() }}
     >
       <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: 'calc(100dvh - 80px)' }}>
-        {/* Header fixo */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-900">Registrar Pagamento</h2>
           <button onClick={onFechar} className="p-1 text-gray-400 text-xl leading-none">✕</button>
         </div>
 
-        {/* Corpo scrollável */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -241,7 +241,6 @@ function ModalRegistrarPagamento({
           )}
         </div>
 
-        {/* Botões fixos na base */}
         <div className="flex-shrink-0 px-5 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white" style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1rem))' }}>
           <button type="button" onClick={onFechar}
             className="rounded-xl bg-gray-100 py-3.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
@@ -341,13 +340,16 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       }))
     }
 
-    // Lançamentos + parcelas
+    // ✅ FIX BUG 5: incluir orcamento_id na query de lançamentos
     const { data: lancsRaw } = await supabase
-      .from('financeiro_lancamentos').select('id, descricao, valor_total')
+      .from('financeiro_lancamentos')
+      .select('id, descricao, valor_total, orcamento_id')
       .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId).eq('tipo', 'receita')
       .order('created_at', { ascending: false })
 
-    const lancsDB = (lancsRaw ?? []) as Array<{ id: string; descricao: string; valor_total: number }>
+    const lancsDB = (lancsRaw ?? []) as Array<{
+      id: string; descricao: string; valor_total: number; orcamento_id: string | null
+    }>
 
     let totalOrcado = 0
     let totalPago = 0
@@ -382,10 +384,14 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
         totalOrcado += l.valor_total
         totalPago += valorPagoLanc
 
+        // ✅ FIX BUG 5: incluir orcamento_id no objeto
         lancamentosProcessados.push({
-          id: l.id, descricao: l.descricao, valor_total: l.valor_total,
+          id: l.id,
+          descricao: l.descricao,
+          valor_total: l.valor_total,
           valor_pago: valorPagoLanc,
           valor_pendente: Math.max(0, l.valor_total - valorPagoLanc),
+          orcamento_id: l.orcamento_id,  // ← ADICIONADO
         })
 
         parcs
@@ -429,31 +435,23 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
     router.push(`/financeiro/lancamento?${params}`)
   }
 
+  // ✅ FIX BUG 3: excluir pelo orcamento_id (FK correta) em vez de valor_total
   async function excluirOrcamento(id: string) {
     setExcluindo(true)
     const supabase = createClient()
 
-    // Buscar o orçamento para saber o valor
-    const orc = orcamentos.find((o) => o.id === id)
-    if (orc) {
-      // Buscar lançamentos financeiros com mesmo valor vinculados ao paciente
-      const { data: lancsVinculados } = await supabase
-        .from('financeiro_lancamentos')
-        .select('id')
-        .eq('clinica_id', clinicaId)
-        .eq('paciente_id', pacienteId)
-        .eq('valor_total', orc.valor_total)
-        .eq('tipo', 'receita')
+    // Buscar lançamentos vinculados via FK orcamento_id
+    const { data: lancsVinculados } = await supabase
+      .from('financeiro_lancamentos')
+      .select('id')
+      .eq('orcamento_id', id)   // ← FIX: FK correta, não valor_total
 
-      if (lancsVinculados && lancsVinculados.length > 0) {
-        const lancIds = (lancsVinculados as { id: string }[]).map((l) => l.id)
-        // Apagar parcelas e lançamentos vinculados
-        await supabase.from('financeiro_parcelas').delete().in('lancamento_id', lancIds)
-        await supabase.from('financeiro_lancamentos').delete().in('id', lancIds)
-      }
+    if (lancsVinculados && lancsVinculados.length > 0) {
+      const lancIds = (lancsVinculados as { id: string }[]).map((l) => l.id)
+      await supabase.from('financeiro_parcelas').delete().in('lancamento_id', lancIds)
+      await supabase.from('financeiro_lancamentos').delete().in('id', lancIds)
     }
 
-    // Apagar itens e o orçamento
     await supabase.from('orcamento_itens').delete().eq('orcamento_id', id)
     await supabase.from('orcamentos').delete().eq('id', id)
 
@@ -557,13 +555,14 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
             <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
               <p className="text-4xl mb-2">📋</p>
               <p className="text-sm font-medium text-gray-500">Nenhum orçamento ainda</p>
-              <p className="text-xs text-gray-400 mt-1">Toque em "Novo Orçamento" para criar</p>
+              <p className="text-xs text-gray-400 mt-1">Toque em &quot;Novo Orçamento&quot; para criar</p>
             </div>
           ) : (
             orcamentos.map((orc) => {
               const cfg = STATUS_CONFIG[orc.status]
-              // Tentar encontrar lançamento vinculado por valor
-              const lancOrc = lancamentos.find((l) => l.valor_total === orc.valor_total)
+
+              // ✅ FIX BUG 5: vincular pelo orcamento_id (FK), não pelo valor_total
+              const lancOrc = lancamentos.find((l) => l.orcamento_id === orc.id)
               const valorPago = lancOrc?.valor_pago ?? 0
               const saldo = orc.valor_total - valorPago
               const pctPago = orc.valor_total > 0
@@ -629,7 +628,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                         className="flex items-center justify-center gap-1 py-3 text-sm font-medium text-red-500 active:bg-red-50"
                       ><X className="h-4 w-4" /> Recusar</button>
                       <button
-                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Esta ação não pode ser desfeita.` })}
+                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Os lançamentos financeiros vinculados também serão removidos.` })}
                         className="flex items-center justify-center py-3 text-gray-400 active:bg-gray-50"
                       ><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -653,7 +652,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                         <ChevronRight className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Esta ação não pode ser desfeita.` })}
+                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Os lançamentos financeiros vinculados também serão removidos.` })}
                         className="px-4 py-3 text-gray-400 active:bg-gray-50"
                       ><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -691,12 +690,10 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                 <div key={p.id}
                   className={`flex items-center gap-3 px-4 py-3 ${idx < pagamentos.length - 1 ? 'border-b border-gray-50' : ''}`}
                 >
-                  {/* Ícone */}
                   <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 text-lg">
                     {p.forma_pagamento ? (FORMA_EMOJI[p.forma_pagamento] ?? '💵') : '💵'}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900">{formatarMoeda(p.valor_pago)}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -706,7 +703,6 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     <p className="text-xs text-gray-400 truncate">Ref. {p.descricao_lancamento}</p>
                   </div>
 
-                  {/* Excluir */}
                   <button
                     onClick={() => setExclusaoInfo({
                       tipo: 'pagamento', id: p.id, lancamentoId: p.lancamento_id,

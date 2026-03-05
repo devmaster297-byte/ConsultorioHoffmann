@@ -87,7 +87,8 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
 
     const supabase = createClient()
 
-    // Buscar todos os lançamentos do mês com parcelas
+    // ✅ FIX BUG 7: buscar apenas lançamentos da clínica (sem filtro de tipo aqui,
+    //    pois precisamos de ambos para calcular despesas e receitas)
     const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, tipo, descricao, valor_total')
@@ -150,13 +151,18 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     const hoje = new Date().toISOString().split('T')[0]
     const em7Dias = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
+    // ✅ FIX BUG 7: filtrar apenas lançamentos de receita para próximos vencimentos
+    const lancIdsReceita = lancamentos
+      .filter((l) => l.tipo === 'receita')
+      .map((l) => l.id)
+
     let proxVenc: ParcelaRow[] = []
-    if (lancIds.length > 0) {
+    if (lancIdsReceita.length > 0) {
       const { data: proxVencRaw } = await supabase
         .from('financeiro_parcelas')
         .select('*')
         .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
+        .in('lancamento_id', lancIdsReceita)
         .in('status', ['pendente', 'pago_parcial'])
         .gte('data_vencimento', hoje)
         .lte('data_vencimento', em7Dias)
@@ -283,12 +289,11 @@ export function useInadimplentes(clinicaId: string) {
         grupos[pacId] = {
           paciente_id: pacId,
           paciente_nome: p.paciente_nome ?? 'Paciente',
-          total_vencido: 0, // aqui vira "saldo pendente"
+          total_vencido: 0,
           parcelas: [],
         }
       }
 
-      // Saldo real de cada parcela
       const saldoParcela = p.valor - (p.valor_pago ?? 0)
       grupos[pacId].total_vencido += saldoParcela
       grupos[pacId].parcelas.push(p)
@@ -348,40 +353,37 @@ export async function baixarParcela(
   return !error
 }
 
+// ✅ FIX BUG 4: corrigido race condition — busca valores ANTES de marcar como pago
 export async function baixarParcelasEmLote(parcelaIds: string[]): Promise<boolean> {
   const supabase = createClient()
   const hoje = new Date().toISOString().split('T')[0]
 
-  const { error } = await supabase
+  // 1. Buscar os valores primeiro para evitar estado inconsistente
+  const { data: parcelasRaw, error: fetchError } = await supabase
     .from('financeiro_parcelas')
-    .update({
-      status: 'pago',
-      data_pagamento: hoje,
-    })
+    .select('id, valor')
     .in('id', parcelaIds)
 
-  if (!error) {
-    // Atualizar valor_pago para cada parcela
-    const { data: parcelasRaw } = await supabase
-      .from('financeiro_parcelas')
-      .select('id, valor')
-      .in('id', parcelaIds)
+  if (fetchError || !parcelasRaw || parcelasRaw.length === 0) return false
 
-    const parcelas = (parcelasRaw ?? []) as unknown as ParcelaValorRow[]
+  const parcelas = parcelasRaw as unknown as ParcelaValorRow[]
 
-    if (parcelas.length > 0) {
-      await Promise.all(
-        parcelas.map((p) =>
-          supabase
-            .from('financeiro_parcelas')
-            .update({ valor_pago: p.valor })
-            .eq('id', p.id)
-        )
-      )
-    }
-  }
+  // 2. Atualizar cada parcela com status + valor_pago na mesma operação (atomicamente por parcela)
+  const resultados = await Promise.all(
+    parcelas.map((p) =>
+      supabase
+        .from('financeiro_parcelas')
+        .update({
+          status: 'pago',
+          valor_pago: p.valor,
+          data_pagamento: hoje,
+        })
+        .eq('id', p.id)
+    )
+  )
 
-  return !error
+  // Retorna true somente se todas as atualizações tiveram sucesso
+  return resultados.every((r) => !r.error)
 }
 
 // ─── Criar lançamento com parcelas ───────────────────────────────────────────
@@ -413,6 +415,7 @@ export async function criarLancamento(
       clinica_id: input.clinicaId,
       paciente_id: input.pacienteId ?? null,
       atendimento_id: input.atendimentoId ?? null,
+      orcamento_id: input.orcamentoId ?? null,  // ✅ FIX BUG 2: salvar orcamento_id
       tipo: input.tipo,
       descricao: input.descricao,
       valor_total: input.valorTotal,
