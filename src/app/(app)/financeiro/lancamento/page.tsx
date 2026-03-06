@@ -64,16 +64,11 @@ function LancamentoContent() {
     'tipo',
   ])
 
-  // Pré-preencher campos vindos de orçamento ou atendimento
+  // ✅ FIX ITEM 4: unificado em um único useEffect. O segundo useEffect
+  // (sem decodeURIComponent) sobrescrevia o primeiro e causava %20 nos valores.
   useEffect(() => {
-    if (valorParam)    setValue('valor_total', valorParam)
-    if (descricaoParam) setValue('descricao', decodeURIComponent(descricaoParam))
-  }, [valorParam, descricaoParam, setValue])
-
-  // Carregar paciente pré-selecionado e pré-preencher campos via query params
-  useEffect(() => {
-    if (descricaoParam) setValue('descricao', descricaoParam)
     if (valorParam)     setValue('valor_total', valorParam)
+    if (descricaoParam) setValue('descricao', decodeURIComponent(descricaoParam))
 
     if (!pacienteIdParam) return
     async function buscarPaciente() {
@@ -86,7 +81,7 @@ function LancamentoContent() {
       if (data) setPacienteSelecionado(data)
     }
     buscarPaciente()
-  }, [pacienteIdParam, descricaoParam, valorParam])
+  }, [pacienteIdParam, descricaoParam, valorParam, setValue])
 
   // Gerar preview das parcelas
   useEffect(() => {
