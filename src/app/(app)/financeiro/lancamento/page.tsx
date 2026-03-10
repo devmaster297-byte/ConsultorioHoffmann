@@ -64,12 +64,14 @@ function LancamentoContent() {
     'tipo',
   ])
 
-  // ✅ FIX ITEM 4: unificado em um único useEffect. O segundo useEffect
-  // (sem decodeURIComponent) sobrescrevia o primeiro e causava %20 nos valores.
+  // Pré-preencher campos vindos de orçamento ou atendimento (com decode correto)
   useEffect(() => {
     if (valorParam)     setValue('valor_total', valorParam)
     if (descricaoParam) setValue('descricao', decodeURIComponent(descricaoParam))
+  }, [valorParam, descricaoParam, setValue])
 
+  // Carregar paciente pré-selecionado
+  useEffect(() => {
     if (!pacienteIdParam) return
     async function buscarPaciente() {
       const supabase = createClient()
@@ -81,7 +83,7 @@ function LancamentoContent() {
       if (data) setPacienteSelecionado(data)
     }
     buscarPaciente()
-  }, [pacienteIdParam, descricaoParam, valorParam, setValue])
+  }, [pacienteIdParam])
 
   // Gerar preview das parcelas
   useEffect(() => {

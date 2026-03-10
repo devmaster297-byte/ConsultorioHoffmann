@@ -2,7 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/store/auth.store'
 
@@ -13,6 +13,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [carregando, setCarregando] = useState(true)
   const [splash, setSplash] = useState(true)
   const pathname = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1600)
@@ -24,14 +25,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function init() {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        // SEGURANÇA: sempre usar getUser() — valida o token no servidor.
+        // getSession() retorna apenas dados locais sem validar com o servidor.
+        const { data: { user }, error } = await supabase.auth.getUser()
 
-        if (session?.user) {
-          if (usuario?.id === session.user.id && usuario?.clinica_id) {
-            setCarregando(false)
-            return
+        if (error || !user) {
+          setUsuario(null)
+          setCarregando(false)
+          const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
+          if (!rotaPublica) {
+            router.replace('/login')
           }
+          return
+        }
 
+        // Evitar re-fetch se os dados do usuário já estão no store
+        if (usuario?.id === user.id && usuario?.clinica_id) {
+          setCarregando(false)
+          return
+        }
+
+        const { data: usuarioDB } = await supabase
+          .from('usuarios')
+          .select('id, nome, clinica_id, perfil, ativo, created_at')
+          .eq('id', user.id)
+          .single()
+
+        if (usuarioDB) {
+          setUsuario(usuarioDB, user.email)
+        } else {
+          // Usuário autenticado no Supabase Auth mas sem registro em 'usuarios'
+          setUsuario(null)
+          await supabase.auth.signOut()
+          router.replace('/login')
+        }
+        setCarregando(false)
+      } catch (e) {
+        console.error('AuthProvider erro:', e)
+        setCarregando(false)
+      }
+    }
+
+    init()
+
+    // Ouvir mudanças de sessão (login em outra aba, token expirado, logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        setUsuario(null)
+        router.replace('/login')
+        return
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session.user && usuario?.id !== session.user.id) {
           const { data: usuarioDB } = await supabase
             .from('usuarios')
             .select('id, nome, clinica_id, perfil, ativo, created_at')
@@ -41,22 +87,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (usuarioDB) {
             setUsuario(usuarioDB, session.user.email)
           }
-          setCarregando(false)
-        } else {
-          setUsuario(null)
-          setCarregando(false)
-          const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
-          if (!rotaPublica) {
-            window.location.href = '/login'
-          }
         }
-      } catch (e) {
-        console.error('AuthProvider erro:', e)
-        setCarregando(false)
       }
-    }
+    })
 
-    init()
+    return () => {
+      subscription.unsubscribe()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

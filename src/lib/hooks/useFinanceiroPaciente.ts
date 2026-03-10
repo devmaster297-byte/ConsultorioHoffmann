@@ -1,5 +1,5 @@
 // src/lib/hooks/useFinanceiroPaciente.ts
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ export interface LancamentoPaciente {
   valor_pendente: number
   num_parcelas: number
   created_at: string
-  orcamento_id: string | null   // ✅ FIX MELHORIA 2: campo presente no tipo
+  orcamento_id: string | null
   atendimento_id: string | null
   pagamentos: PagamentoRegistrado[]
 }
@@ -47,15 +47,8 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string>('')
 
   const carregar = useCallback(async () => {
-    if (!pacienteId || !clinicaId) return
-    setCarregando(true)
-
-    const supabase = createClient()
-
-    // ✅ FIX MELHORIA 2: incluir orcamento_id na query
-    const { data: lancsRaw } = await supabase
       .from('financeiro_lancamentos')
-      .select('id, descricao, valor_total, num_parcelas, created_at, atendimento_id, orcamento_id')
+      .select('id, descricao, valor_total, num_parcelas, created_at, atendimento_id')
       .eq('clinica_id', clinicaId)
       .eq('paciente_id', pacienteId)
       .eq('tipo', 'receita')
@@ -68,7 +61,6 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
       num_parcelas: number
       created_at: string
       atendimento_id: string | null
-      orcamento_id: string | null  // ✅ agora incluso
     }>
 
     if (lancs.length === 0) {
@@ -108,10 +100,13 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     const lancamentosCompletos: LancamentoPaciente[] = lancs.map((l) => {
       const parcsDoLanc = parcelasPorLanc[l.id] ?? []
 
+      // Valor pago = soma de todas as parcelas com status pago
+      // (cada entrada na lista de pagamentos é uma parcela separada)
       const valorPago = parcsDoLanc
         .filter((p) => p.status === 'pago')
         .reduce((acc, p) => acc + (p.valor_pago ?? p.valor), 0)
 
+      // Cada parcela paga = um pagamento individual no histórico
       const pgtos: PagamentoRegistrado[] = parcsDoLanc
         .filter((p) => p.status === 'pago' && p.data_pagamento)
         .map((p) => ({
@@ -133,7 +128,7 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
         valor_pendente: Math.max(0, l.valor_total - valorPago),
         num_parcelas: l.num_parcelas,
         created_at: l.created_at,
-        orcamento_id: l.orcamento_id,      // ✅ populado corretamente
+        orcamento_id: null,
         atendimento_id: l.atendimento_id,
         pagamentos: pgtos,
       }
@@ -157,10 +152,15 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     setUltimaAtualizacao(new Date().toLocaleTimeString('pt-BR'))
   }, [pacienteId, clinicaId])
 
+  // Carregar automaticamente ao montar o componente
+  useEffect(() => { carregar() }, [carregar])
+
   return { lancamentos, pagamentos, resumo, carregando, ultimaAtualizacao, recarregar: carregar }
 }
 
 // ─── Registrar Pagamento ──────────────────────────────────────────────────────
+// Cada pagamento cria uma NOVA parcela com status 'pago'.
+// Isso preserva o histórico completo — cada entrada é imutável.
 
 export interface RegistrarPagamentoInput {
   clinicaId: string
@@ -233,6 +233,7 @@ export async function registrarPagamentoPaciente(
 }
 
 // ─── Excluir Pagamento ────────────────────────────────────────────────────────
+// Remove a parcela completamente (cada pagamento é uma parcela própria)
 
 export async function excluirPagamentoParcela(
   parcelaId: string

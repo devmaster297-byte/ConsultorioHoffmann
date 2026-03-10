@@ -109,7 +109,6 @@ export type Database = {
           nome: string
           valor_padrao: number | null
           ativo: boolean
-          created_at: string
         }
         Insert: {
           id?: string
@@ -117,7 +116,6 @@ export type Database = {
           nome: string
           valor_padrao?: number | null
           ativo?: boolean
-          created_at?: string
         }
         Update: {
           id?: string
@@ -125,7 +123,6 @@ export type Database = {
           nome?: string
           valor_padrao?: number | null
           ativo?: boolean
-          created_at?: string
         }
       }
       atendimentos: {
@@ -135,12 +132,10 @@ export type Database = {
           paciente_id: string
           dentista_id: string | null
           data_atendimento: string
-          queixa_principal: string | null
-          diagnostico: string | null
-          tratamento_realizado: string | null
-          observacoes: string | null
+          procedimento_id: string | null
+          descricao: string | null
+          valor_total: number | null
           created_at: string
-          updated_at: string
         }
         Insert: {
           id?: string
@@ -148,12 +143,10 @@ export type Database = {
           paciente_id: string
           dentista_id?: string | null
           data_atendimento: string
-          queixa_principal?: string | null
-          diagnostico?: string | null
-          tratamento_realizado?: string | null
-          observacoes?: string | null
+          procedimento_id?: string | null
+          descricao?: string | null
+          valor_total?: number | null
           created_at?: string
-          updated_at?: string
         }
         Update: {
           id?: string
@@ -161,61 +154,10 @@ export type Database = {
           paciente_id?: string
           dentista_id?: string | null
           data_atendimento?: string
-          queixa_principal?: string | null
-          diagnostico?: string | null
-          tratamento_realizado?: string | null
-          observacoes?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      orcamentos: {
-        Row: {
-          id: string
-          clinica_id: string
-          paciente_id: string
-          status: 'pendente' | 'aprovado' | 'recusado'
-          observacoes: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          clinica_id: string
-          paciente_id: string
-          status?: 'pendente' | 'aprovado' | 'recusado'
-          observacoes?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          clinica_id?: string
-          paciente_id?: string
-          status?: 'pendente' | 'aprovado' | 'recusado'
-          observacoes?: string | null
-          created_at?: string
-        }
-      }
-      orcamento_itens: {
-        Row: {
-          id: string
-          orcamento_id: string
-          procedimento_id: string | null
-          procedimento_nome: string
-          valor: number
-        }
-        Insert: {
-          id?: string
-          orcamento_id: string
           procedimento_id?: string | null
-          procedimento_nome: string
-          valor: number
-        }
-        Update: {
-          id?: string
-          orcamento_id?: string
-          procedimento_id?: string | null
-          procedimento_nome?: string
-          valor?: number
+          descricao?: string | null
+          valor_total?: number | null
+          created_at?: string
         }
       }
       radiografias: {
@@ -224,8 +166,8 @@ export type Database = {
           clinica_id: string
           paciente_id: string
           atendimento_id: string | null
-          storage_path: string          // ✅ FIX: era 'url', campo correto no banco
-          thumbnail_path: string | null // ✅ FIX: campo adicionado
+          storage_path: string
+          thumbnail_path: string | null
           anotacao: string | null
           data_exame: string | null
           tipo: 'periapical' | 'panoramico' | 'outro' | null
@@ -256,14 +198,12 @@ export type Database = {
           created_at?: string
         }
       }
-      // ✅ FIX: adicionado orcamento_id em todos os shapes
       financeiro_lancamentos: {
         Row: {
           id: string
           clinica_id: string
           atendimento_id: string | null
           paciente_id: string | null
-          orcamento_id: string | null   // ← ADICIONADO
           tipo: 'receita' | 'despesa'
           descricao: string
           valor_total: number
@@ -275,7 +215,6 @@ export type Database = {
           clinica_id: string
           atendimento_id?: string | null
           paciente_id?: string | null
-          orcamento_id?: string | null  // ← ADICIONADO
           tipo: 'receita' | 'despesa'
           descricao: string
           valor_total: number
@@ -287,7 +226,6 @@ export type Database = {
           clinica_id?: string
           atendimento_id?: string | null
           paciente_id?: string | null
-          orcamento_id?: string | null  // ← ADICIONADO
           tipo?: 'receita' | 'despesa'
           descricao?: string
           valor_total?: number
@@ -305,9 +243,7 @@ export type Database = {
           data_vencimento: string
           data_pagamento: string | null
           valor_pago: number | null
-          status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
-          created_at: string
-          updated_at: string
+          status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido'
         }
         Insert: {
           id?: string
@@ -318,9 +254,7 @@ export type Database = {
           data_vencimento: string
           data_pagamento?: string | null
           valor_pago?: number | null
-          status?: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
-          created_at?: string
-          updated_at?: string
+          status?: 'pendente' | 'pago' | 'pago_parcial' | 'vencido'
         }
         Update: {
           id?: string
@@ -331,11 +265,18 @@ export type Database = {
           data_vencimento?: string
           data_pagamento?: string | null
           valor_pago?: number | null
-          status?: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
-          created_at?: string
-          updated_at?: string
+          status?: 'pendente' | 'pago' | 'pago_parcial' | 'vencido'
         }
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
     }
   }
 }
@@ -346,8 +287,6 @@ export type Usuario = Database['public']['Tables']['usuarios']['Row']
 export type Paciente = Database['public']['Tables']['pacientes']['Row']
 export type Procedimento = Database['public']['Tables']['procedimentos']['Row']
 export type Atendimento = Database['public']['Tables']['atendimentos']['Row']
-export type Orcamento = Database['public']['Tables']['orcamentos']['Row']
-export type OrcamentoItem = Database['public']['Tables']['orcamento_itens']['Row']
 export type Radiografia = Database['public']['Tables']['radiografias']['Row']
 export type FinanceiroLancamento = Database['public']['Tables']['financeiro_lancamentos']['Row']
 export type FinanceiroParcela = Database['public']['Tables']['financeiro_parcelas']['Row']
@@ -355,4 +294,10 @@ export type FinanceiroParcela = Database['public']['Tables']['financeiro_parcela
 // Tipos compostos para queries com join
 export type PacienteComStatus = Paciente & {
   status_financeiro: 'em_dia' | 'pendente' | 'vencido'
+}
+
+export type AtendimentoComDetalhes = Atendimento & {
+  procedimento: Procedimento | null
+  dentista: { nome: string } | null
+  radiografias: Pick<Radiografia, 'id' | 'storage_path' | 'thumbnail_path'>[]
 }

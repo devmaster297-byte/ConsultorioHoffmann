@@ -123,10 +123,11 @@ export default function NovoPacientePage() {
               Telefone / WhatsApp
             </label>
             <input
-              {...register('telefone')}
+              {...register('telefone', {
+                onChange: (e) => setValue('telefone', formatarTelefone(e.target.value)),
+              })}
               type="tel"
               placeholder="(27) 99999-9999"
-              onChange={(e) => setValue('telefone', formatarTelefone(e.target.value))}
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
@@ -150,11 +151,12 @@ export default function NovoPacientePage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
               <input
-                {...register('cpf')}
+                {...register('cpf', {
+                  onChange: (e) => setValue('cpf', formatarCPF(e.target.value)),
+                })}
                 type="text"
                 placeholder="000.000.000-00"
                 maxLength={14}
-                onChange={(e) => setValue('cpf', formatarCPF(e.target.value))}
                 className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>

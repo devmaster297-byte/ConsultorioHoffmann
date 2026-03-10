@@ -24,8 +24,6 @@ interface ParcelaRow {
   data_vencimento: string
   data_pagamento: string | null
   status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
-  created_at: string
-  updated_at: string
 }
 
 interface PacienteRow {
@@ -87,8 +85,7 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
 
     const supabase = createClient()
 
-    // ✅ FIX BUG 7: buscar apenas lançamentos da clínica (sem filtro de tipo aqui,
-    //    pois precisamos de ambos para calcular despesas e receitas)
+    // Buscar todos os lançamentos do mês com parcelas
     const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, tipo, descricao, valor_total')
@@ -151,18 +148,13 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     const hoje = new Date().toISOString().split('T')[0]
     const em7Dias = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    // ✅ FIX BUG 7: filtrar apenas lançamentos de receita para próximos vencimentos
-    const lancIdsReceita = lancamentos
-      .filter((l) => l.tipo === 'receita')
-      .map((l) => l.id)
-
     let proxVenc: ParcelaRow[] = []
-    if (lancIdsReceita.length > 0) {
+    if (lancIds.length > 0) {
       const { data: proxVencRaw } = await supabase
         .from('financeiro_parcelas')
         .select('*')
         .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIdsReceita)
+        .in('lancamento_id', lancIds)
         .in('status', ['pendente', 'pago_parcial'])
         .gte('data_vencimento', hoje)
         .lte('data_vencimento', em7Dias)
@@ -289,11 +281,12 @@ export function useInadimplentes(clinicaId: string) {
         grupos[pacId] = {
           paciente_id: pacId,
           paciente_nome: p.paciente_nome ?? 'Paciente',
-          total_vencido: 0,
+          total_vencido: 0, // aqui vira "saldo pendente"
           parcelas: [],
         }
       }
 
+      // Saldo real de cada parcela
       const saldoParcela = p.valor - (p.valor_pago ?? 0)
       grupos[pacId].total_vencido += saldoParcela
       grupos[pacId].parcelas.push(p)
@@ -353,22 +346,20 @@ export async function baixarParcela(
   return !error
 }
 
-// ✅ FIX BUG 4: corrigido race condition — busca valores ANTES de marcar como pago
 export async function baixarParcelasEmLote(parcelaIds: string[]): Promise<boolean> {
   const supabase = createClient()
   const hoje = new Date().toISOString().split('T')[0]
 
-  // 1. Buscar os valores primeiro para evitar estado inconsistente
-  const { data: parcelasRaw, error: fetchError } = await supabase
+  // Buscar valores atuais das parcelas
+  const { data: parcelasRaw } = await supabase
     .from('financeiro_parcelas')
     .select('id, valor')
     .in('id', parcelaIds)
 
-  if (fetchError || !parcelasRaw || parcelasRaw.length === 0) return false
+  const parcelas = (parcelasRaw ?? []) as unknown as ParcelaValorRow[]
+  if (parcelas.length === 0) return false
 
-  const parcelas = parcelasRaw as unknown as ParcelaValorRow[]
-
-  // 2. Atualizar cada parcela com status + valor_pago na mesma operação (atomicamente por parcela)
+  // Atualizar cada parcela com seu valor correto em paralelo (uma operação por parcela)
   const resultados = await Promise.all(
     parcelas.map((p) =>
       supabase
@@ -382,7 +373,6 @@ export async function baixarParcelasEmLote(parcelaIds: string[]): Promise<boolea
     )
   )
 
-  // Retorna true somente se todas as atualizações tiveram sucesso
   return resultados.every((r) => !r.error)
 }
 
@@ -415,7 +405,6 @@ export async function criarLancamento(
       clinica_id: input.clinicaId,
       paciente_id: input.pacienteId ?? null,
       atendimento_id: input.atendimentoId ?? null,
-      orcamento_id: input.orcamentoId ?? null,  // ✅ FIX BUG 2: salvar orcamento_id
       tipo: input.tipo,
       descricao: input.descricao,
       valor_total: input.valorTotal,
@@ -433,7 +422,8 @@ export async function criarLancamento(
   // Gerar parcelas
   const valorParcela = Number((input.valorTotal / input.numParcelas).toFixed(2))
   const parcelas = Array.from({ length: input.numParcelas }, (_, i) => {
-    const dataVenc = new Date(input.primeiroVencimento)
+    // Usar T12:00:00 para evitar bug de fuso horário que avança/recua um dia
+    const dataVenc = new Date(input.primeiroVencimento + 'T12:00:00')
     dataVenc.setMonth(dataVenc.getMonth() + i)
 
     // Ajuste de valor para a última parcela (diferença de arredondamento)

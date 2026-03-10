@@ -14,31 +14,23 @@ import { debounce } from '@/lib/utils'
 export default function PacientesPage() {
   const { clinicaId } = useAuthStore()
   const [busca, setBusca] = useState('')
-  const [pacientes, setPacientes] = useState<Paciente[]>([]
-  )
+  const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [statusMap, setStatusMap] = useState<Record<string, StatusFinanceiro>>({})
   const [carregando, setCarregando] = useState(true)
   const [buscando, setBuscando] = useState(false)
-  // ✅ FIX ITEM 9: paginação para clínicas com mais de 100 pacientes
-  const [pagina, setPagina] = useState(0)
-  const [totalPacientes, setTotalPacientes] = useState(0)
-  const PAGE_SIZE = 100
 
   const buscarPacientes = useCallback(
-    async (query: string, novaPagina = 0) => {
+    async (query: string) => {
       if (!clinicaId) return
       setBuscando(true)
 
       const supabase = createClient()
-      const from = novaPagina * PAGE_SIZE
-      const to = from + PAGE_SIZE - 1
-
       let req = supabase
         .from('pacientes')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('clinica_id', clinicaId)
         .order('nome')
-        .range(from, to)
+        .limit(50)
 
       if (query.trim()) {
         req = req.or(
@@ -46,18 +38,14 @@ export default function PacientesPage() {
         )
       }
 
-      const { data, count } = await req
-      const lista = (data ?? []) as Paciente[]
-
-      // Ao mudar página, concatena; ao buscar, substitui
-      setPacientes((prev) => novaPagina > 0 ? [...prev, ...lista] : lista)
-      setTotalPacientes(count ?? 0)
-      setPagina(novaPagina)
+      const { data } = await req
+      const lista = data ?? []
+      setPacientes(lista)
 
       if (lista.length > 0) {
         const ids = lista.map((p: Paciente) => p.id)
         const status = await calcularStatusEmBatch(ids, clinicaId)
-        setStatusMap((prev) => ({ ...prev, ...status }))
+        setStatusMap(status)
       }
 
       setBuscando(false)
@@ -80,12 +68,6 @@ export default function PacientesPage() {
       buscarPacientes('')
     }
   }, [busca, buscarDebounced, buscarPacientes])
-
-  const temMais = pacientes.length < totalPacientes
-
-  function carregarMais() {
-    buscarPacientes(busca, pagina + 1)
-  }
 
   return (
     <div className="flex flex-col h-full">
@@ -151,17 +133,8 @@ export default function PacientesPage() {
               />
             ))}
             <p className="text-center text-xs text-gray-400 pt-2">
-              {pacientes.length} de {totalPacientes} paciente{totalPacientes !== 1 ? 's' : ''}
+              {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''}
             </p>
-            {temMais && (
-              <button
-                onClick={carregarMais}
-                disabled={buscando}
-                className="w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-medium text-blue-600 active:bg-gray-50 disabled:opacity-50"
-              >
-                {buscando ? 'Carregando...' : `Carregar mais (${totalPacientes - pacientes.length} restantes)`}
-              </button>
-            )}
           </div>
         )}
       </div>

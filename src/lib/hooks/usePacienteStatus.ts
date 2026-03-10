@@ -37,7 +37,6 @@ export async function calcularStatusFinanceiro(
     .eq('clinica_id', clinicaId)
     .in('lancamento_id', lancamentoIds)
     .neq('status', 'pago')
-    .neq('status', 'cancelado') // ✅ FIX ITEM 5: ignorar parcelas canceladas
 
   const parcelas = (parcelasRaw || []) as { status: string }[]
 
@@ -81,7 +80,6 @@ export async function calcularStatusEmBatch(
     .select('lancamento_id, status')
     .in('lancamento_id', lancamentoIds)
     .neq('status', 'pago')
-    .neq('status', 'cancelado') // ✅ FIX ITEM 5: ignorar parcelas canceladas
 
   // Casting aplicado aqui: o TypeScript agora conhece o tipo da 'parcela'
   const parcelas = (parcelasRaw || []) as ParcelaStatusRow[]
