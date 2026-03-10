@@ -47,6 +47,12 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string>('')
 
   const carregar = useCallback(async () => {
+    if (!pacienteId || !clinicaId) return
+    setCarregando(true)
+
+    const supabase = createClient()
+
+    const { data: lancsRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, descricao, valor_total, num_parcelas, created_at, atendimento_id')
       .eq('clinica_id', clinicaId)
