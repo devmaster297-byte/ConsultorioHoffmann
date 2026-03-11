@@ -65,7 +65,11 @@ export interface Inadimplente {
 // evitando a necessidade de um cron job ou trigger no banco.
 
 async function atualizarParcelasVencidas(clinicaId: string): Promise<void> {
-  const hoje = new Date().toISOString().split('T')[0]
+  // Usar data LOCAL (não UTC). toISOString() usa UTC — no Brasil (UTC-3), às 21h
+  // o UTC já virou "amanhã", o que marcaria parcelas de hoje como vencidas incorretamente.
+  const agora = new Date()
+  const hoje = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000)
+    .toISOString().split('T')[0]
 
   await supabase
     .from('financeiro_parcelas')
