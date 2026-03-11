@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/auth.store'
 
 const ROTAS_PUBLICAS = ['/login']
 
-async function buscarUsuarioDB(userId: string) {
+async function buscarUsuarioDB(userId: string, email?: string | null) {
   const { data } = await supabase
     .from('usuarios')
     .select('id, nome, clinica_id, perfil, ativo, created_at')
@@ -23,89 +23,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [splash, setSplash] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
-  // Ref para saber se já inicializamos (evita dupla execução no Strict Mode)
   const iniciado = useRef(false)
 
-  // Splash de entrada
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 800)
     return () => clearTimeout(t)
   }, [])
 
-  // Inicialização da sessão — roda UMA vez
   useEffect(() => {
     if (iniciado.current) return
     iniciado.current = true
 
     let montado = true
 
-    async function init() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!montado) return
-
-        if (!user) {
-          setUsuario(null)
-          return
-        }
-
-        // Já temos dados do mesmo usuário no store — não refazer o fetch
-        if (usuario?.id === user.id && usuario?.clinica_id) return
-
-        const usuarioDB = await buscarUsuarioDB(user.id)
-        if (!montado) return
-
-        if (usuarioDB) {
-          setUsuario(usuarioDB, user.email ?? undefined)
-        } else {
-          setUsuario(null)
-          await supabase.auth.signOut()
-        }
-      } catch (e) {
-        console.error('AuthProvider init erro:', e)
-        if (montado) setUsuario(null)
-      } finally {
-        if (montado) setCarregando(false)
-      }
-    }
-
-    init()
-
+    // Usar onAuthStateChange como fonte única de verdade.
+    // NÃO chamar getUser() aqui — ele compete pelo Web Lock com autoRefreshToken
+    // e causa timeout de 10s. O evento INITIAL_SESSION dispara automaticamente
+    // com a sessão atual (ou null) sem adquirir nenhum lock extra.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!montado) return
 
-      if (event === 'SIGNED_OUT' || !session) {
-        setUsuario(null)
-        setCarregando(false)
-        router.replace('/login')
-        return
-      }
+      // INITIAL_SESSION: dispara imediatamente no mount com a sessão do storage
+      if (event === 'INITIAL_SESSION') {
+        if (!session?.user) {
+          setUsuario(null)
+          setCarregando(false)
+          return
+        }
 
-      if (event === 'SIGNED_IN') {
-        // CRÍTICO: setar carregando=true ANTES do fetch e da navegação.
-        // Sem isso, o guard de pathname vê usuario=null em /pacientes e
-        // redireciona de volta para /login — loop infinito.
-        setCarregando(true)
+        // Já temos dados do mesmo usuário — não refazer o fetch
+        if (usuario?.id === session.user.id && usuario?.clinica_id) {
+          setCarregando(false)
+          return
+        }
 
         const usuarioDB = await buscarUsuarioDB(session.user.id)
         if (!montado) return
 
         if (usuarioDB) {
           setUsuario(usuarioDB, session.user.email ?? undefined)
-          // Navegar apenas se estiver em rota pública
+        } else {
+          setUsuario(null)
+          await supabase.auth.signOut()
+        }
+        setCarregando(false)
+        return
+      }
+
+      if (event === 'SIGNED_IN') {
+        setCarregando(true)
+        const usuarioDB = await buscarUsuarioDB(session!.user.id)
+        if (!montado) return
+
+        if (usuarioDB) {
+          setUsuario(usuarioDB, session!.user.email ?? undefined)
           const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
           if (rotaPublica) router.replace('/pacientes')
         } else {
           setUsuario(null)
           await supabase.auth.signOut()
         }
-
         setCarregando(false)
         return
       }
 
-      // TOKEN_REFRESHED: atualizar store só se for usuário diferente
-      if (event === 'TOKEN_REFRESHED' && session.user && usuario?.id !== session.user.id) {
+      if (event === 'SIGNED_OUT') {
+        setUsuario(null)
+        setCarregando(false)
+        router.replace('/login')
+        return
+      }
+
+      // TOKEN_REFRESHED: atualizar store apenas se for usuário diferente
+      if (event === 'TOKEN_REFRESHED' && session?.user && usuario?.id !== session.user.id) {
         const usuarioDB = await buscarUsuarioDB(session.user.id)
         if (montado && usuarioDB) setUsuario(usuarioDB, session.user.email ?? undefined)
       }
@@ -118,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Guard de pathname — redireciona para /login se não autenticado
+  // Guard de pathname
   useEffect(() => {
     if (carregando || splash) return
     const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
@@ -127,10 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   if (splash || carregando) {
     return (
-      <div
-        className="fixed inset-0 flex flex-col items-center justify-center"
-        style={{ background: 'var(--hf-black)' }}
-      >
+      <div className="fixed inset-0 flex flex-col items-center justify-center" style={{ background: 'var(--hf-black)' }}>
         <div className="animate-fade-in-up flex flex-col items-center">
           <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', textAlign: 'center' }}>
             <p style={{ fontSize: 32, fontWeight: 500, letterSpacing: '0.2em', color: '#FFFFFF', margin: 0 }}>HOFFMANN</p>
