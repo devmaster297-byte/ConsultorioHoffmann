@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Edit2, Trash2, Scan, DollarSign, Calendar, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 
@@ -56,7 +56,6 @@ export default function DetalheAtendimentoPage() {
   }, [atendimentoId, clinicaId])
 
   async function carregar() {
-    const supabase = createClient()
 
     const { data: atend } = await supabase
       .from('atendimentos')
@@ -121,7 +120,6 @@ export default function DetalheAtendimentoPage() {
 
   async function excluir() {
     setExcluindo(true)
-    const supabase = createClient()
     await supabase.from('atendimentos').delete().eq('id', atendimentoId)
     router.push(`/pacientes/${pacienteId}`)
   }

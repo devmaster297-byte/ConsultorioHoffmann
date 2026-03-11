@@ -1,5 +1,5 @@
 // src/lib/hooks/usePacienteStatus.ts
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 
 export type StatusFinanceiro = 'em_dia' | 'pendente' | 'vencido'
 
@@ -18,7 +18,6 @@ export async function calcularStatusFinanceiro(
   pacienteId: string,
   clinicaId: string
 ): Promise<StatusFinanceiro> {
-  const supabase = createClient()
 
   const { data: lancamentosRaw } = await supabase
     .from('financeiro_lancamentos')
@@ -54,7 +53,6 @@ export async function calcularStatusEmBatch(
 ): Promise<Record<string, StatusFinanceiro>> {
   if (pacienteIds.length === 0) return {}
 
-  const supabase = createClient()
 
   const { data: lancamentosRaw } = await supabase
     .from('financeiro_lancamentos')

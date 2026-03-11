@@ -9,7 +9,7 @@ import {
   ArrowLeft, Phone, Plus, FileText,
   Edit2, ClipboardList,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { Paciente } from '@/lib/supabase/types'
 import { StatusFinanceiro, calcularStatusFinanceiro } from '@/lib/hooks/usePacienteStatus'
 import { useAtendimentos } from '@/lib/hooks/useAtendimentos'
@@ -50,7 +50,6 @@ export default function FichaPacientePage() {
   const carregarPaciente = useCallback(async () => {
     if (!id || !clinicaId) { setCarregandoPaciente(false); return }
     try {
-      const supabase = createClient()
       const { data: pac, error } = await supabase
         .from('pacientes').select('*').eq('id', id).single()
       if (error || !pac) {

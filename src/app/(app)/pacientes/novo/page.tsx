@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { FotoUploader } from '@/components/shared/FotoUploader'
 import { formatarTelefone, formatarCPF } from '@/lib/utils'
@@ -45,7 +45,6 @@ export default function NovoPacientePage() {
     setSalvando(true)
     setErro(null)
 
-    const supabase = createClient()
     const { data: paciente, error } = await supabase
       .from('pacientes')
       .insert({

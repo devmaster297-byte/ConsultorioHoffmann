@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft, Trash2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { Paciente } from '@/lib/supabase/types'
 import { FotoUploader } from '@/components/shared/FotoUploader'
@@ -43,7 +43,6 @@ export default function EditarPacientePage() {
   useEffect(() => {
     if (!id) return
     async function carregar() {
-      const supabase = createClient()
       const { data } = await supabase.from('pacientes').select('*').eq('id', id).single()
       if (!data) {
         router.back()
@@ -68,7 +67,6 @@ export default function EditarPacientePage() {
     setSalvando(true)
     setErro(null)
 
-    const supabase = createClient()
     const { error } = await supabase
       .from('pacientes')
       .update({
@@ -92,7 +90,6 @@ export default function EditarPacientePage() {
 
   async function excluirPaciente() {
     setExcluindo(true)
-    const supabase = createClient()
     await supabase.from('pacientes').delete().eq('id', id)
     router.push('/pacientes')
   }

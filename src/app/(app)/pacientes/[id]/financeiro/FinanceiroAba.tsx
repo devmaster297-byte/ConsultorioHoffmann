@@ -7,7 +7,7 @@ import {
   Plus, Check, X, Trash2, ChevronRight, Clock,
   RefreshCw, DollarSign,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { registrarPagamentoPaciente, excluirPagamentoParcela } from '@/lib/hooks/useFinanceiroPaciente'
 
@@ -310,7 +310,6 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
   const carregar = useCallback(async () => {
     if (!pacienteId || !clinicaId) return
     setCarregando(true)
-    const supabase = createClient()
 
     // Orçamentos
     const { data: orcsRaw } = await supabase
@@ -417,7 +416,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
   // ── Ações ─────────────────────────────────────────────────────────────────────
 
   async function mudarStatusOrcamento(id: string, status: StatusOrcamento) {
-    await createClient().from('orcamentos').update({ status }).eq('id', id)
+    await supabase.from('orcamentos').update({ status }).eq('id', id)
     setOrcamentos((prev) => prev.map((o) => o.id === id ? { ...o, status } : o))
   }
 
@@ -432,7 +431,6 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
 
   async function excluirOrcamento(id: string) {
     setExcluindo(true)
-    const supabase = createClient()
 
     // Buscar o orçamento para saber o valor
     const orc = orcamentos.find((o) => o.id === id)

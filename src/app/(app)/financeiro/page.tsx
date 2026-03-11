@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useFinanceiro, baixarParcela } from '@/lib/hooks/useFinanceiro'
 import { FinanceiroPainel } from '@/components/financeiro/FinanceiroPainel'
@@ -76,7 +76,6 @@ function useRecebimentos(clinicaId: string, mes: string) {
   const carregar = useCallback(async () => {
     if (!clinicaId) return
     setCarregando(true)
-    const supabase = createClient()
 
     const [ano, mesNum] = mes.split('-').map(Number)
     const inicio = `${mes}-01`
@@ -163,7 +162,6 @@ function useOrcamentosFinanceiro(clinicaId: string) {
   const carregar = useCallback(async () => {
     if (!clinicaId) return
     setCarregando(true)
-    const supabase = createClient()
 
     const { data: orcs } = await supabase
       .from('orcamentos')

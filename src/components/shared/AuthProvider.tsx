@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 
 const ROTAS_PUBLICAS = ['/login']
@@ -23,7 +23,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Inicialização da sessão — roda UMA vez no mount
   useEffect(() => {
-    const supabase = createClient()
     let montado = true
 
     async function init() {

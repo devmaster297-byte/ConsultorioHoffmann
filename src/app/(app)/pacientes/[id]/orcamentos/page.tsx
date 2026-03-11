@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Check, Clock, X, Trash2, ChevronRight, AlertCircle } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 
@@ -74,7 +74,7 @@ export default function OrcamentosPage() {
     if (!clinicaId) return
     
     async function buscarProcedimentos() {
-      const { data } = await createClient()
+      const { data } = await supabase
         .from('procedimentos')
         .select('id, nome, valor_padrao')
         .eq('clinica_id', clinicaId)
@@ -90,7 +90,6 @@ export default function OrcamentosPage() {
   const carregar = useCallback(async () => {
     if (!clinicaId || !pacienteId) return
     setCarregando(true)
-    const supabase = createClient()
 
     const { data: pac } = await supabase
       .from('pacientes').select('nome').eq('id', pacienteId).single()
@@ -177,7 +176,6 @@ export default function OrcamentosPage() {
     setSalvando(true)
     setErroForm(null)
 
-    const supabase = createClient()
     const { data: orc, error } = await supabase
       .from('orcamentos')
       .insert({
@@ -219,13 +217,12 @@ export default function OrcamentosPage() {
   }
 
   async function mudarStatus(id: string, status: StatusOrcamento) {
-    await createClient().from('orcamentos').update({ status }).eq('id', id)
+    await supabase.from('orcamentos').update({ status }).eq('id', id)
     setOrcamentos(prev => prev.map(o => o.id === id ? { ...o, status } : o))
   }
 
   async function deletar(id: string) {
     if (!confirm('Excluir este orçamento?')) return
-    const supabase = createClient()
     await supabase.from('orcamento_itens').delete().eq('orcamento_id', id)
     await supabase.from('orcamentos').delete().eq('id', id)
     setOrcamentos(prev => prev.filter(o => o.id !== id))

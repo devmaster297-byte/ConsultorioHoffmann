@@ -1,6 +1,6 @@
 // src/lib/hooks/useAtendimentos.ts
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 
 export type StatusPagamento = 'pago' | 'parcial' | 'aberto'
 
@@ -27,7 +27,6 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
     setCarregando(true)
     setErro(null)
 
-    const supabase = createClient()
 
     // Buscar atendimentos SEM join em usuarios (evita erro 400 por FK ausente)
     const { data: atend, error } = await supabase

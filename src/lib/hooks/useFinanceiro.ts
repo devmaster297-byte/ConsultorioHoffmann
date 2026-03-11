@@ -1,6 +1,6 @@
 // src/lib/hooks/useFinanceiro.ts
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { FinanceiroParcela } from '@/lib/supabase/types'
 
 // ─── Tipos das Queries ────────────────────────────────────────────────────────
@@ -83,7 +83,6 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     if (!clinicaId) return
     setCarregando(true)
 
-    const supabase = createClient()
 
     // Buscar todos os lançamentos do mês com parcelas
     const { data: lancamentosRaw } = await supabase
@@ -188,7 +187,6 @@ export function useInadimplentes(clinicaId: string) {
     if (!clinicaId) return
     setCarregando(true)
 
-    const supabase = createClient()
 
     // Lançamentos de receita com paciente vinculado
     const { data: lancamentosRaw } = await supabase
@@ -319,7 +317,6 @@ export async function baixarParcela(
   parcelaId: string,
   valorPago?: number
 ): Promise<boolean> {
-  const supabase = createClient()
   const hoje = new Date().toISOString().split('T')[0]
 
   const { data: parcelaRaw } = await supabase
@@ -347,7 +344,6 @@ export async function baixarParcela(
 }
 
 export async function baixarParcelasEmLote(parcelaIds: string[]): Promise<boolean> {
-  const supabase = createClient()
   const hoje = new Date().toISOString().split('T')[0]
 
   // Buscar valores atuais das parcelas
@@ -397,7 +393,6 @@ interface LancamentoCriadoRow {
 export async function criarLancamento(
   input: CriarLancamentoInput
 ): Promise<{ sucesso: boolean; erro?: string }> {
-  const supabase = createClient()
 
   const { data: lancamentoRaw, error: lancErr } = await supabase
     .from('financeiro_lancamentos')
@@ -471,7 +466,6 @@ async function enriquecerParcelas(
   clinicaId: string
 ): Promise<ParcelaComLancamento[]> {
   if (parcelas.length === 0) return []
-  const supabase = createClient()
 
   const lancIds = [...new Set(parcelas.map((p) => p.lancamento_id))]
 

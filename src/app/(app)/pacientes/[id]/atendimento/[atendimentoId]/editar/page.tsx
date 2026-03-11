@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useProcedimentos } from '@/lib/hooks/useProcedimentos'
 
@@ -36,7 +36,6 @@ export default function EditarAtendimentoPage() {
   useEffect(() => {
     if (!atendimentoId) return
     async function carregar() {
-      const supabase = createClient()
       const { data } = await supabase
         .from('atendimentos')
         .select('*')
@@ -59,7 +58,6 @@ export default function EditarAtendimentoPage() {
   async function onSubmit(data: FormData) {
     setSalvando(true)
     setErro(null)
-    const supabase = createClient()
 
     const { error } = await supabase
       .from('atendimentos')

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, ChevronDown, History } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 
 interface Procedimento {
@@ -30,7 +30,7 @@ export default function NovoAtendimentoPage() {
 
   useEffect(() => {
     if (!clinicaId) return
-    createClient()
+    supabase
       .from('procedimentos')
       .select('id, nome')
       .eq('clinica_id', clinicaId)
@@ -45,7 +45,7 @@ export default function NovoAtendimentoPage() {
     setSalvando(true)
     setErro(null)
 
-    const { error } = await createClient()
+    const { error } = await supabase
       .from('atendimentos')
       .insert({
         clinica_id:       clinicaId,

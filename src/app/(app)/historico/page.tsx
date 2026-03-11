@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Search, ClipboardList } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { formatarData, formatarMoeda, debounce } from '@/lib/utils'
 
@@ -42,7 +42,6 @@ export default function HistoricoPage() {
       if (!clinicaId) return
       setBuscando(true)
 
-      const supabase = createClient()
       
       // Realiza a busca com os joins de paciente e procedimento
       const { data } = await supabase

@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Search, Plus, UserX } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { Paciente } from '@/lib/supabase/types'
 import { StatusFinanceiro, calcularStatusEmBatch } from '@/lib/hooks/usePacienteStatus'
 import { PacienteCard } from '@/components/pacientes/PacienteCard'
@@ -24,7 +24,6 @@ export default function PacientesPage() {
       if (!clinicaId) return
       setBuscando(true)
 
-      const supabase = createClient()
       let req = supabase
         .from('pacientes')
         .select('*')

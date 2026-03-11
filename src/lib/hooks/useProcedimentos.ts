@@ -1,6 +1,6 @@
 // src/lib/hooks/useProcedimentos.ts
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { Procedimento } from '@/lib/supabase/types'
 
 export function useProcedimentos(clinicaId: string) {
@@ -11,7 +11,6 @@ export function useProcedimentos(clinicaId: string) {
     if (!clinicaId) return
 
     async function carregar() {
-      const supabase = createClient()
       const { data } = await supabase
         .from('procedimentos')
         .select('*')

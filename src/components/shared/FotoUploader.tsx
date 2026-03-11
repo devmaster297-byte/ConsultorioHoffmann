@@ -3,7 +3,7 @@
 
 import { useRef, useState } from 'react'
 import { Camera, ImagePlus, Loader2, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 
 interface Props {
   clinicaId: string
@@ -38,7 +38,6 @@ export function FotoUploader({ clinicaId, pacienteId, fotoAtual, onAtualizar }: 
     const objectUrl = URL.createObjectURL(file)
     setPreviewUrl(objectUrl)
 
-    const supabase = createClient()
     const ext = file.name.split('.').pop() ?? 'jpg'
     const path = `${clinicaId}/fotos/${pacienteId}.${ext}`
 

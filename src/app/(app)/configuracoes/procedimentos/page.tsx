@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, Check, X } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useProcedimentos } from '@/lib/hooks/useProcedimentos'
 import { Procedimento } from '@/lib/supabase/types'
@@ -27,7 +27,6 @@ export default function ProcedimentosPage() {
   async function salvarNovo() {
     if (!novoNome.trim() || !clinicaId) return
     setSalvando(true)
-    const supabase = createClient()
     const { data } = await supabase
       .from('procedimentos')
       .insert({
@@ -48,7 +47,6 @@ export default function ProcedimentosPage() {
   }
 
   async function salvarEdicao(id: string, nome: string, valor: string) {
-    const supabase = createClient()
     const { data } = await supabase
       .from('procedimentos')
       .update({
@@ -66,7 +64,6 @@ export default function ProcedimentosPage() {
   }
 
   async function toggleAtivo(proc: Procedimento) {
-    const supabase = createClient()
     const { data } = await supabase
       .from('procedimentos')
       .update({ ativo: !proc.ativo })

@@ -8,7 +8,7 @@ import {
   ArrowLeft, Edit2, Trash2, Scan,
   Calendar, User, ClipboardList,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { formatarData } from '@/lib/utils'
 
@@ -39,7 +39,6 @@ export default function DetalheAtendimentoPage() {
   }, [atendimentoId, clinicaId])
 
   async function carregar() {
-    const supabase = createClient()
 
     const { data: atend, error } = await supabase
       .from('atendimentos')
@@ -79,7 +78,7 @@ export default function DetalheAtendimentoPage() {
 
   async function excluir() {
     setExcluindo(true)
-    await createClient().from('atendimentos').delete().eq('id', atendimentoId)
+    await supabase.from('atendimentos').delete().eq('id', atendimentoId)
     router.push(`/pacientes/${pacienteId}`)
   }
 

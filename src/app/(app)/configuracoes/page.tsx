@@ -4,7 +4,7 @@
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ClipboardList, LogOut } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 
 export default function ConfiguracoesPage() {
@@ -12,7 +12,6 @@ export default function ConfiguracoesPage() {
   const { setUsuario } = useAuthStore()
 
   async function sair() {
-    const supabase = createClient()
     await supabase.auth.signOut()
     setUsuario(null)
     router.push('/login')

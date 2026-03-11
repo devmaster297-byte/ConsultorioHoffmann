@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Filter } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { ParcelaComLancamento, baixarParcela } from '@/lib/hooks/useFinanceiro'
 import { ParcelaItem } from '@/components/financeiro/ParcelaItem'
@@ -39,7 +39,6 @@ export default function ParcelasPage() {
     if (!clinicaId) return
     setCarregando(true)
 
-    const supabase = createClient()
 
     // Buscar IDs dos lançamentos da clínica
     const { data: lancamentosRaw } = await supabase
@@ -72,10 +71,10 @@ export default function ParcelasPage() {
     const parc = (parcRaw || []) as any[] // Usamos as parcelas brutas para enriquecer
 
     // Enriquecer dados
-    const supabase2 = createClient()
+    // supabase singleton já importado
     const lancIdsUnicos = [...new Set(parc.map((p) => p.lancamento_id))]
 
-    const { data: lancsRaw } = await supabase2
+    const { data: lancsRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, descricao, tipo, paciente_id, atendimento_id')
       .in('id', lancIdsUnicos)
@@ -86,7 +85,7 @@ export default function ParcelasPage() {
     const pacienteIds = [...new Set(lancs.map((l) => l.paciente_id).filter(Boolean) as string[])]
 
     const { data: pacientesRaw } = pacienteIds.length > 0
-      ? await supabase2.from('pacientes').select('id, nome').in('id', pacienteIds)
+      ? await supabase.from('pacientes').select('id, nome').in('id', pacienteIds)
       : { data: [] }
 
     const pacientes = (pacientesRaw || []) as PacienteBasico[]

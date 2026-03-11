@@ -1,6 +1,6 @@
 // src/lib/hooks/useFinanceiroPaciente.ts
 import { useState, useCallback, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,6 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     if (!pacienteId || !clinicaId) return
     setCarregando(true)
 
-    const supabase = createClient()
 
     const { data: lancsRaw } = await supabase
       .from('financeiro_lancamentos')
@@ -181,7 +180,6 @@ export interface RegistrarPagamentoInput {
 export async function registrarPagamentoPaciente(
   input: RegistrarPagamentoInput
 ): Promise<{ sucesso: boolean; erro?: string }> {
-  const supabase = createClient()
 
   // Verificar saldo disponível
   const { data: parcelasRaw } = await supabase
@@ -244,7 +242,6 @@ export async function registrarPagamentoPaciente(
 export async function excluirPagamentoParcela(
   parcelaId: string
 ): Promise<{ sucesso: boolean; erro?: string }> {
-  const supabase = createClient()
 
   const { error } = await supabase
     .from('financeiro_parcelas')
