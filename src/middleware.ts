@@ -2,13 +2,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 
-const ROTAS_PUBLICAS = ['/login']
-
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
   const response = NextResponse.next({ request })
 
-  // Criar cliente Supabase com cookies do request/response
+  // O papel do middleware é APENAS manter o cookie de sessão atualizado.
+  // Redirecionamentos de autenticação são feitos pelo AuthProvider (client-side),
+  // evitando conflito entre server redirect e client navigation que trava o login.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -27,20 +26,9 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // SEMPRE usar getUser() — valida o token no servidor (getSession() é inseguro)
-  const { data: { user } } = await supabase.auth.getUser()
-
-  const ehRotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
-
-  // Usuário não autenticado tentando acessar rota protegida → redirecionar para login
-  if (!user && !ehRotaPublica) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // Usuário já autenticado tentando acessar login → redirecionar para app
-  if (user && ehRotaPublica) {
-    return NextResponse.redirect(new URL('/pacientes', request.url))
-  }
+  // Chamar getUser() aqui garante que o token é renovado e o cookie
+  // atualizado a cada request — necessário para o SSR funcionar corretamente.
+  await supabase.auth.getUser()
 
   return response
 }
