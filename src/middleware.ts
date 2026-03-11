@@ -5,9 +5,6 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request })
 
-  // O papel do middleware é APENAS manter o cookie de sessão atualizado.
-  // Redirecionamentos de autenticação são feitos pelo AuthProvider (client-side),
-  // evitando conflito entre server redirect e client navigation que trava o login.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -18,7 +15,8 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value)
+            // request.cookies é read-only no Next.js — NÃO usar request.cookies.set()
+            // Apenas atualizar o response é suficiente para propagar o cookie
             response.cookies.set(name, value, options)
           })
         },
@@ -26,8 +24,9 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Chamar getUser() aqui garante que o token é renovado e o cookie
-  // atualizado a cada request — necessário para o SSR funcionar corretamente.
+  // Renova o token e atualiza o cookie a cada request (necessário para SSR).
+  // Redirecionamentos ficam no AuthProvider (client-side) para evitar
+  // conflito com a navegação do browser após o login.
   await supabase.auth.getUser()
 
   return response

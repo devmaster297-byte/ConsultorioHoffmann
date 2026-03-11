@@ -15,31 +15,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
 
+  // Splash de entrada (reduzido para 800ms — 1600ms parecia travado)
   useEffect(() => {
-    const t = setTimeout(() => setSplash(false), 1600)
+    const t = setTimeout(() => setSplash(false), 800)
     return () => clearTimeout(t)
   }, [])
 
+  // Inicialização da sessão — roda UMA vez no mount
   useEffect(() => {
     const supabase = createClient()
+    let montado = true
 
     async function init() {
       try {
-        // SEGURANÇA: sempre usar getUser() — valida o token no servidor.
-        // getSession() retorna apenas dados locais sem validar com o servidor.
         const { data: { user }, error } = await supabase.auth.getUser()
+
+        if (!montado) return
 
         if (error || !user) {
           setUsuario(null)
           setCarregando(false)
-          const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
-          if (!rotaPublica) {
-            router.replace('/login')
-          }
           return
         }
 
-        // Evitar re-fetch se os dados do usuário já estão no store
+        // Evitar re-fetch se já temos os dados do mesmo usuário
         if (usuario?.id === user.id && usuario?.clinica_id) {
           setCarregando(false)
           return
@@ -51,40 +50,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq('id', user.id)
           .single()
 
+        if (!montado) return
+
         if (usuarioDB) {
           setUsuario(usuarioDB, user.email)
         } else {
-          // Usuário autenticado no Supabase Auth mas sem registro em 'usuarios'
+          // Autenticado no Supabase Auth mas sem registro em 'usuarios'
           setUsuario(null)
           await supabase.auth.signOut()
-          router.replace('/login')
         }
-        setCarregando(false)
       } catch (e) {
         console.error('AuthProvider erro:', e)
-        setCarregando(false)
+        if (montado) setUsuario(null)
+      } finally {
+        if (montado) setCarregando(false)
       }
     }
 
     init()
 
-    // Ouvir mudanças de sessão (login em outra aba, token expirado, logout)
+    // Listener de mudanças de sessão (logout, expiração, login em outra aba)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!montado) return
+
       if (event === 'SIGNED_OUT' || !session) {
         setUsuario(null)
         router.replace('/login')
         return
       }
 
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session.user && usuario?.id !== session.user.id) {
+      if (event === 'SIGNED_IN') {
+        // Buscar dados do usuário e navegar para o app
+        const { data: usuarioDB } = await supabase
+          .from('usuarios')
+          .select('id, nome, clinica_id, perfil, ativo, created_at')
+          .eq('id', session.user.id)
+          .single()
+
+        if (!montado) return
+
+        if (usuarioDB) {
+          setUsuario(usuarioDB, session.user.email)
+          // Só redireciona se estiver em rota pública (ex: /login)
+          const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
+          if (rotaPublica) {
+            router.replace('/pacientes')
+          }
+        }
+        return
+      }
+
+      if (event === 'TOKEN_REFRESHED' && session.user) {
+        // Token renovado — apenas atualizar store se for usuário diferente
+        if (usuario?.id !== session.user.id) {
           const { data: usuarioDB } = await supabase
             .from('usuarios')
             .select('id, nome, clinica_id, perfil, ativo, created_at')
             .eq('id', session.user.id)
             .single()
 
-          if (usuarioDB) {
+          if (montado && usuarioDB) {
             setUsuario(usuarioDB, session.user.email)
           }
         }
@@ -92,10 +117,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
+      montado = false
       subscription.unsubscribe()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Redirecionamento baseado em pathname — roda quando a rota muda
+  useEffect(() => {
+    if (carregando) return
+
+    const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
+
+    if (!usuario && !rotaPublica) {
+      router.replace('/login')
+    }
+  }, [pathname, usuario, carregando, router])
 
   // ── Splash / loading ───────────────────────────────────────────────────────
   if (splash || carregando) {
