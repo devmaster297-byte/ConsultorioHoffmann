@@ -5,9 +5,8 @@ import { createBrowserClient } from '@supabase/ssr'
 let _client: ReturnType<typeof createBrowserClient> | null = null
 
 export function createClient() {
-  // Garantir que só é executado no browser
+  // Em contexto de servidor (SSR), nunca usar singleton
   if (typeof window === 'undefined') {
-    // Em contexto de servidor, criar instância temporária sem cache
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -16,18 +15,13 @@ export function createClient() {
 
   if (_client) return _client
 
+  // Deixar o @supabase/ssr gerenciar storage, locks e refresh por conta própria.
+  // NÃO passar storageKey customizado — ele causa conflito no Web Locks API
+  // (Navigator.locks) quando múltiplas abas ou re-renders tentam adquirir
+  // o mesmo lock simultaneamente, resultando em timeout de 10s.
   _client = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        storage: window.localStorage,
-        storageKey: 'hoffmann-supabase-session',
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-      },
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
   return _client
