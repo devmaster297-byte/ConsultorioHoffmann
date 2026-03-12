@@ -421,6 +421,7 @@ export interface CriarLancamentoInput {
   clinicaId: string
   pacienteId?: string
   atendimentoId?: string
+  orcamentoId?: string
   tipo: 'receita' | 'despesa'
   descricao: string
   valorTotal: number
@@ -442,6 +443,7 @@ export async function criarLancamento(
       clinica_id: input.clinicaId,
       paciente_id: input.pacienteId ?? null,
       atendimento_id: input.atendimentoId ?? null,
+      orcamento_id: input.orcamentoId ?? null,
       tipo: input.tipo,
       descricao: input.descricao,
       valor_total: input.valorTotal,
