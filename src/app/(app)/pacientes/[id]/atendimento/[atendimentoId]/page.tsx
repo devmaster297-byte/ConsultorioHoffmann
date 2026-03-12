@@ -60,9 +60,9 @@ export default function DetalheAtendimentoPage() {
       id: atend.id,
       paciente_id: atend.paciente_id,
       data_atendimento: atend.data_atendimento,
-      procedimento_nome: (atend.procedimento as { nome: string } | null)?.nome ?? null,
+      procedimento_nome: (atend.procedimento as unknown as { nome: string } | null)?.nome ?? null,
       descricao: atend.descricao,
-      dentista_nome: (atend.dentista as { nome: string } | null)?.nome ?? null,
+      dentista_nome: (atend.dentista as unknown as { nome: string } | null)?.nome ?? null,
       total_radiografias: totalRx ?? 0,
     })
     setCarregando(false)
