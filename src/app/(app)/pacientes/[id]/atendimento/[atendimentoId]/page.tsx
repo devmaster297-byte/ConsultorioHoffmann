@@ -33,15 +33,17 @@ export default function DetalheAtendimentoPage() {
   }, [atendimentoId])
 
   async function carregar() {
+    // FIX: buscar sem join em usuarios (FK ausente causa erro 400)
+    // Fazemos duas queries separadas: atendimento + dentista por id
     const { data: atend } = await supabase
       .from('atendimentos')
       .select(`
         id,
         paciente_id,
+        dentista_id,
         data_atendimento,
         descricao,
-        procedimento:procedimentos(nome),
-        dentista:usuarios(nome)
+        procedimento:procedimentos(nome)
       `)
       .eq('id', atendimentoId)
       .single()
@@ -49,6 +51,17 @@ export default function DetalheAtendimentoPage() {
     if (!atend) {
       router.back()
       return
+    }
+
+    // Buscar nome do dentista separadamente
+    let dentistaNome: string | null = null
+    if (atend.dentista_id) {
+      const { data: dentista } = await supabase
+        .from('usuarios')
+        .select('nome')
+        .eq('id', atend.dentista_id)
+        .single()
+      dentistaNome = (dentista as { nome: string } | null)?.nome ?? null
     }
 
     const { count: totalRx } = await supabase
@@ -62,7 +75,7 @@ export default function DetalheAtendimentoPage() {
       data_atendimento: atend.data_atendimento,
       procedimento_nome: (atend.procedimento as unknown as { nome: string } | null)?.nome ?? null,
       descricao: atend.descricao,
-      dentista_nome: (atend.dentista as unknown as { nome: string } | null)?.nome ?? null,
+      dentista_nome: dentistaNome,
       total_radiografias: totalRx ?? 0,
     })
     setCarregando(false)
@@ -130,6 +143,10 @@ export default function DetalheAtendimentoPage() {
               </p>
             </div>
           )}
+
+          {!dados.descricao && !dados.dentista_nome && (
+            <p className="text-sm text-gray-400 italic">Sem observações registradas.</p>
+          )}
         </div>
 
         {/* Raio-X */}
@@ -151,6 +168,15 @@ export default function DetalheAtendimentoPage() {
           <span className="text-xs text-indigo-600 font-medium">
             {dados.total_radiografias > 0 ? 'Ver' : 'Adicionar'}
           </span>
+        </Link>
+
+        {/* Editar atalho */}
+        <Link
+          href={`/pacientes/${pacienteId}/atendimento/${atendimentoId}/editar`}
+          className="flex items-center justify-center gap-2 w-full bg-white rounded-xl p-4 shadow-sm text-sm font-medium text-blue-600 active:bg-blue-50 border border-blue-100"
+        >
+          <Edit2 className="h-4 w-4" />
+          Editar atendimento
         </Link>
       </div>
 
