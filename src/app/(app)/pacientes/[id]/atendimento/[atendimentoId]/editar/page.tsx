@@ -12,10 +12,9 @@ import { useAuthStore } from '@/store/auth.store'
 import { useProcedimentos } from '@/lib/hooks/useProcedimentos'
 
 const schema = z.object({
-  data_atendimento: z.string().min(1),
+  data_atendimento: z.string().min(1, 'Data obrigatória'),
   procedimento_id: z.string().optional(),
   descricao: z.string().optional(),
-  valor_total: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -29,6 +28,8 @@ export default function EditarAtendimentoPage() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
+  const hoje = new Date().toISOString().split('T')[0]
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
@@ -38,7 +39,7 @@ export default function EditarAtendimentoPage() {
     async function carregar() {
       const { data } = await supabase
         .from('atendimentos')
-        .select('*')
+        .select('data_atendimento, procedimento_id, descricao')
         .eq('id', atendimentoId)
         .single()
 
@@ -47,7 +48,6 @@ export default function EditarAtendimentoPage() {
           data_atendimento: data.data_atendimento,
           procedimento_id: data.procedimento_id ?? '',
           descricao: data.descricao ?? '',
-          valor_total: data.valor_total?.toString() ?? '',
         })
       }
       setCarregando(false)
@@ -65,7 +65,6 @@ export default function EditarAtendimentoPage() {
         data_atendimento: data.data_atendimento,
         procedimento_id: data.procedimento_id || null,
         descricao: data.descricao || null,
-        valor_total: data.valor_total ? parseFloat(data.valor_total) : null,
       })
       .eq('id', atendimentoId)
 
@@ -97,15 +96,24 @@ export default function EditarAtendimentoPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex-1 px-4 py-6">
         <div className="space-y-4 bg-white rounded-2xl p-4 shadow-sm">
+
+          {/* Data */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Data do atendimento
+            </label>
             <input
               {...register('data_atendimento')}
               type="date"
+              max={hoje}
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
+            {errors.data_atendimento && (
+              <p className="mt-1 text-xs text-red-500">{errors.data_atendimento.message}</p>
+            )}
           </div>
 
+          {/* Procedimento */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Procedimento</label>
             <div className="relative">
@@ -122,25 +130,13 @@ export default function EditarAtendimentoPage() {
             </div>
           </div>
 
+          {/* Observações */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-              <input
-                {...register('valor_total')}
-                type="number"
-                step="0.01"
-                min="0"
-                className="w-full rounded-xl border border-gray-200 pl-9 pr-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Observação</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
             <textarea
               {...register('descricao')}
-              rows={4}
+              rows={5}
+              placeholder="Dente 16, anestesia aplicada, próxima consulta..."
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
             />
           </div>

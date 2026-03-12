@@ -8,6 +8,21 @@ import { supabase } from '@/lib/supabase-browser'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { registrarPagamentoPaciente, excluirPagamentoParcela } from '@/lib/hooks/useFinanceiroPaciente'
 
+// ─── Prefixo de identificação ────────────────────────────────────────────────
+// FIX CRÍTICO: Em vez de buscar o lançamento por valor_total (que colide quando
+// dois orçamentos têm o mesmo valor), codificamos o ID do orçamento na descrição
+// do lançamento. Formato: "[orc:UUID] Procedimento1, Procedimento2"
+// Isso garante lookup exato por UUID mesmo sem adicionar coluna ao banco.
+
+const ORC_PREFIX = (orcId: string) => `[orc:${orcId}]`
+const DESCRICAO_LANCAMENTO = (orc: Orcamento): string =>
+  `${ORC_PREFIX(orc.id)} ${orc.itens.map((i) => i.procedimento_nome).join(', ')}`
+
+function extrairOrcamentoIdDaDescricao(descricao: string): string | null {
+  const match = descricao.match(/^\[orc:([a-f0-9-]{36})\]/)
+  return match ? match[1] : null
+}
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type StatusOrcamento = 'pendente' | 'aprovado' | 'recusado'
@@ -71,8 +86,6 @@ const STATUS_CONFIG = {
 }
 
 // ─── Modal Registrar Pagamento ────────────────────────────────────────────────
-// Recebe um orçamento aprovado e registra o pagamento.
-// Se ainda não existe lancamento para este orçamento, cria um automaticamente.
 
 function ModalRegistrarPagamento({
   pacienteId, clinicaId, orcamentoComSaldo, onFechar, onSucesso,
@@ -93,31 +106,31 @@ function ModalRegistrarPagamento({
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
+  // FIX: buscar lançamento por prefixo "[orc:UUID]" na descrição — lookup exato por ID
   async function getOuCriarLancamento(): Promise<string | null> {
-    // 1. Verificar se já existe lancamento para este orçamento (match por paciente + valor)
+    const prefixo = ORC_PREFIX(orcamento.id)
+
     const { data: existente } = await supabase
       .from('financeiro_lancamentos')
       .select('id')
       .eq('clinica_id', clinicaId)
       .eq('paciente_id', pacienteId)
-      .eq('valor_total', orcamento.valor_total)
       .eq('tipo', 'receita')
+      .ilike('descricao', `${prefixo}%`)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (existente) return (existente as { id: string }).id
 
-    // 2. Não existe — criar lancamento automaticamente ao registrar o primeiro pagamento
-    const descricao = `Orçamento – ${orcamento.itens.map((i) => i.procedimento_nome).join(', ')}`
-
+    // Não existe — criar com a descrição contendo o prefixo do orçamento
     const { data: novoLanc, error } = await supabase
       .from('financeiro_lancamentos')
       .insert({
         clinica_id: clinicaId,
         paciente_id: pacienteId,
         tipo: 'receita',
-        descricao,
+        descricao: DESCRICAO_LANCAMENTO(orcamento),
         valor_total: orcamento.valor_total,
         num_parcelas: 1,
       })
@@ -131,13 +144,20 @@ function ModalRegistrarPagamento({
   async function handleSalvar() {
     const valorNum = parseFloat(valor)
     if (!valorNum || valorNum <= 0) { setErro('Informe um valor válido'); return }
-    if (valorNum > valor_pendente + 0.01) { setErro(`Valor maior que o saldo pendente (${formatarMoeda(valor_pendente)})`); return }
+    if (valorNum > valor_pendente + 0.01) {
+      setErro(`Valor maior que o saldo pendente (${formatarMoeda(valor_pendente)})`)
+      return
+    }
 
     setSalvando(true)
     setErro(null)
 
     const lancamentoId = await getOuCriarLancamento()
-    if (!lancamentoId) { setErro('Erro ao preparar cobrança. Tente novamente.'); setSalvando(false); return }
+    if (!lancamentoId) {
+      setErro('Erro ao preparar cobrança. Tente novamente.')
+      setSalvando(false)
+      return
+    }
 
     const resultado = await registrarPagamentoPaciente({
       clinicaId, pacienteId, lancamentoId,
@@ -171,7 +191,7 @@ function ModalRegistrarPagamento({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* Resumo do orçamento */}
+          {/* Resumo */}
           <div className="rounded-xl bg-blue-50 px-4 py-3 flex justify-between items-center">
             <div>
               <p className="text-xs text-blue-500 font-medium">Total do orçamento</p>
@@ -342,7 +362,11 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       const itensPorOrc: Record<string, ItemOrcamento[]> = {}
       itensDB.forEach((item) => {
         if (!itensPorOrc[item.orcamento_id]) itensPorOrc[item.orcamento_id] = []
-        itensPorOrc[item.orcamento_id].push({ id: item.id, procedimento_nome: item.procedimento_nome, valor: Number(item.valor) })
+        itensPorOrc[item.orcamento_id].push({
+          id: item.id,
+          procedimento_nome: item.procedimento_nome,
+          valor: Number(item.valor),
+        })
       })
       orcamentosCompletos = orcsDB.map((o) => ({
         ...o,
@@ -351,56 +375,71 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       }))
     }
 
-    // Lançamentos + parcelas (para calcular o que já foi pago)
-    const { data: lancsRaw } = await supabase
-      .from('financeiro_lancamentos').select('id, descricao, valor_total')
-      .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId).eq('tipo', 'receita')
-      .order('created_at', { ascending: false })
-
-    const lancsDB = (lancsRaw ?? []) as Array<{ id: string; descricao: string; valor_total: number }>
-
-    // Mapa: valor_total → lancamento (para associar orçamentos a lançamentos)
-    const lancPorValor: Record<number, typeof lancsDB[0]> = {}
-    lancsDB.forEach((l) => { lancPorValor[l.valor_total] = l })
-
-    let totalOrcado = 0
-    let totalPago = 0
-    const pagamentosColetados: Pagamento[] = []
+    // FIX: Lançamentos buscados por prefixo do orçamento na descrição
+    // Monta um mapa: orcamento_id → lancamento
+    const lancPorOrcId: Record<string, { id: string; descricao: string; valor_total: number }> = {}
     const lancPagoMap: Record<string, number> = {}
+    const pagamentosColetados: Pagamento[] = []
 
-    if (lancsDB.length > 0) {
-      const lancIds = lancsDB.map((l) => l.id)
-      const { data: parcelasRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('id, lancamento_id, valor, valor_pago, data_pagamento, status')
-        .in('lancamento_id', lancIds)
-        .order('data_pagamento', { ascending: false })
+    if (orcamentosCompletos.length > 0) {
+      const { data: lancsRaw } = await supabase
+        .from('financeiro_lancamentos')
+        .select('id, descricao, valor_total')
+        .eq('clinica_id', clinicaId)
+        .eq('paciente_id', pacienteId)
+        .eq('tipo', 'receita')
+        .order('created_at', { ascending: false })
 
-      const parcelasDB = (parcelasRaw ?? []) as Array<{
-        id: string; lancamento_id: string; valor: number
-        valor_pago: number | null; data_pagamento: string | null; status: string
-      }>
+      const lancsDB = (lancsRaw ?? []) as Array<{ id: string; descricao: string; valor_total: number }>
 
-      parcelasDB.forEach((p) => {
-        if (p.status === 'pago' || p.status === 'pago_parcial') {
-          lancPagoMap[p.lancamento_id] = (lancPagoMap[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
-          if (p.data_pagamento) {
-            const lanc = lancsDB.find((l) => l.id === p.lancamento_id)
-            pagamentosColetados.push({
-              id: p.id, lancamento_id: p.lancamento_id,
-              descricao_lancamento: lanc?.descricao ?? '',
-              valor_pago: p.valor_pago ?? p.valor,
-              data_pagamento: p.data_pagamento,
-              forma_pagamento: null,
-            })
-          }
+      // Associar cada lançamento ao seu orçamento pelo prefixo "[orc:UUID]"
+      for (const lanc of lancsDB) {
+        const orcId = extrairOrcamentoIdDaDescricao(lanc.descricao)
+        if (orcId) {
+          // Prefixo encontrado: associação exata por UUID
+          lancPorOrcId[orcId] = lanc
         }
-      })
+      }
+
+      // Buscar parcelas pagas dos lançamentos encontrados
+      const lancIds = lancsDB.map((l) => l.id)
+      if (lancIds.length > 0) {
+        const { data: parcelasRaw } = await supabase
+          .from('financeiro_parcelas')
+          .select('id, lancamento_id, valor, valor_pago, data_pagamento, status')
+          .in('lancamento_id', lancIds)
+          .order('data_pagamento', { ascending: false })
+
+        const parcelasDB = (parcelasRaw ?? []) as Array<{
+          id: string; lancamento_id: string; valor: number
+          valor_pago: number | null; data_pagamento: string | null; status: string
+        }>
+
+        parcelasDB.forEach((p) => {
+          if (p.status === 'pago' || p.status === 'pago_parcial') {
+            // FIX: incluir pago_parcial no total pago
+            lancPagoMap[p.lancamento_id] = (lancPagoMap[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
+            if (p.data_pagamento) {
+              const lanc = lancsDB.find((l) => l.id === p.lancamento_id)
+              pagamentosColetados.push({
+                id: p.id, lancamento_id: p.lancamento_id,
+                descricao_lancamento: lanc?.descricao ?? '',
+                valor_pago: p.valor_pago ?? p.valor,
+                data_pagamento: p.data_pagamento,
+                forma_pagamento: null,
+              })
+            }
+          }
+        })
+      }
     }
 
-    // Cruzar orçamentos com saldo pago
+    // Cruzar orçamentos com saldo (usando mapa por ID do orçamento)
+    let totalOrcado = 0
+    let totalPago = 0
+
     const comSaldo: OrcamentoComSaldo[] = orcamentosCompletos.map((orc) => {
-      const lanc = lancPorValor[orc.valor_total]
+      const lanc = lancPorOrcId[orc.id]
       const valorPago = lanc ? (lancPagoMap[lanc.id] ?? 0) : 0
       if (orc.status === 'aprovado') {
         totalOrcado += orc.valor_total
@@ -440,10 +479,13 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
     setExcluindo(true)
     const orc = orcamentos.find((o) => o.id === id)
     if (orc) {
+      // FIX: buscar lançamento pelo prefixo UUID, não por valor_total
+      const prefixo = ORC_PREFIX(orc.id)
       const { data: lancsVinculados } = await supabase
         .from('financeiro_lancamentos').select('id')
         .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId)
-        .eq('valor_total', orc.valor_total).eq('tipo', 'receita')
+        .ilike('descricao', `${prefixo}%`)
+
       if (lancsVinculados && lancsVinculados.length > 0) {
         const lancIds = (lancsVinculados as { id: string }[]).map((l) => l.id)
         await supabase.from('financeiro_parcelas').delete().in('lancamento_id', lancIds)
@@ -483,7 +525,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
         <div>
           <h3 className="font-bold text-gray-900">Financeiro do Paciente</h3>
           {ultimaAtualizacao && (
-            <p className="text-xs text-gray-400 mt-0.5">Última atualização: {ultimaAtualizacao}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Atualizado às {ultimaAtualizacao}</p>
           )}
         </div>
         <button onClick={carregar}
@@ -493,7 +535,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
         </button>
       </div>
 
-      {/* Métricas — apenas orçamentos aprovados */}
+      {/* Métricas */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-white rounded-2xl p-3 shadow-sm text-center">
           <p className="text-base font-bold text-blue-600">{formatarMoeda(resumo.totalOrcado)}</p>
@@ -592,7 +634,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     )}
                   </div>
 
-                  {/* Barra de progresso (só em aprovado) */}
+                  {/* Barra de progresso (aprovado) */}
                   {orc.status === 'aprovado' && (
                     <div className="px-4 pb-3">
                       <div className="flex items-center gap-2 mb-1">
@@ -607,15 +649,13 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     </div>
                   )}
 
-                  {/* Ações */}
+                  {/* Ações — pendente */}
                   {orc.status === 'pendente' && (
                     <div className="border-t border-gray-100 grid grid-cols-3 divide-x divide-gray-100">
-                      <button
-                        onClick={() => mudarStatusOrcamento(orc.id, 'aprovado')}
+                      <button onClick={() => mudarStatusOrcamento(orc.id, 'aprovado')}
                         className="flex items-center justify-center gap-1 py-3 text-sm font-semibold text-green-700 active:bg-green-50"
                       ><Check className="h-4 w-4" /> Aprovar</button>
-                      <button
-                        onClick={() => mudarStatusOrcamento(orc.id, 'recusado')}
+                      <button onClick={() => mudarStatusOrcamento(orc.id, 'recusado')}
                         className="flex items-center justify-center gap-1 py-3 text-sm font-medium text-red-500 active:bg-red-50"
                       ><X className="h-4 w-4" /> Recusar</button>
                       <button
@@ -625,6 +665,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     </div>
                   )}
 
+                  {/* Ações — aprovado */}
                   {orc.status === 'aprovado' && (
                     <div className="border-t border-gray-100 flex divide-x divide-gray-100">
                       {saldo > 0 ? (
@@ -646,6 +687,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     </div>
                   )}
 
+                  {/* Ações — recusado */}
                   {orc.status === 'recusado' && (
                     <div className="border-t border-gray-100 flex divide-x divide-gray-100">
                       <button onClick={() => mudarStatusOrcamento(orc.id, 'pendente')}
@@ -688,7 +730,6 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                       {p.forma_pagamento ? FORMA_LABEL[p.forma_pagamento] : 'Pagamento'}
                       {' • '}{formatarData(p.data_pagamento)}
                     </p>
-                    <p className="text-xs text-gray-400 truncate">Ref. {p.descricao_lancamento}</p>
                   </div>
                   <button
                     onClick={() => setExclusaoInfo({

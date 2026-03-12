@@ -2,8 +2,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase-browser'
 
-export type StatusPagamento = 'pago' | 'parcial' | 'aberto'
-
 export interface AtendimentoDetalhado {
   id: string
   paciente_id: string
@@ -11,9 +9,7 @@ export interface AtendimentoDetalhado {
   procedimento_id: string | null
   procedimento_nome: string | null
   descricao: string | null
-  valor_total: number | null
   dentista_nome: string | null
-  status_pagamento: StatusPagamento
   total_radiografias: number
 }
 
@@ -27,8 +23,6 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
     setCarregando(true)
     setErro(null)
 
-
-    // Buscar atendimentos SEM join em usuarios (evita erro 400 por FK ausente)
     const { data: atend, error } = await supabase
       .from('atendimentos')
       .select(`
@@ -38,7 +32,6 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
         data_atendimento,
         procedimento_id,
         descricao,
-        valor_total,
         procedimento:procedimentos(nome)
       `)
       .eq('paciente_id', pacienteId)
@@ -57,49 +50,24 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       return
     }
 
-    const atendIds = atend.map((a: typeof atend[number]) => a.id)
+    // Buscar nomes dos dentistas
+    const dentistaIds = [...new Set(
+      atend.map((a: typeof atend[number]) => a.dentista_id).filter(Boolean)
+    )] as string[]
 
-    // Buscar nomes dos dentistas separadamente
-    const dentistaIds = [...new Set(atend.map((a: typeof atend[number]) => a.dentista_id).filter(Boolean))] as string[]
     const dentistaMap: Record<string, string> = {}
     if (dentistaIds.length > 0) {
       const { data: dentistas } = await supabase
         .from('usuarios')
         .select('id, nome')
         .in('id', dentistaIds)
-      dentistas?.forEach((d: { id: string; nome: string }) => { dentistaMap[d.id] = d.nome })
+      dentistas?.forEach((d: { id: string; nome: string }) => {
+        dentistaMap[d.id] = d.nome
+      })
     }
 
-    // Buscar lançamentos financeiros vinculados
-    const { data: lancamentos } = await supabase
-      .from('financeiro_lancamentos')
-      .select('id, atendimento_id')
-      .in('atendimento_id', atendIds)
-      .eq('clinica_id', clinicaId)
-
-    const lancamentoIds = lancamentos?.map((l: { id: string }) => l.id) ?? []
-    const lancAtendMap = Object.fromEntries(
-      (lancamentos ?? []).map((l: { id: string; atendimento_id: string }) => [l.id, l.atendimento_id])
-    )
-
-    // Buscar parcelas
-    const { data: parcelas } = lancamentoIds.length > 0
-      ? await supabase
-          .from('financeiro_parcelas')
-          .select('lancamento_id, status')
-          .in('lancamento_id', lancamentoIds)
-      : { data: [] }
-
-    const parcelasAtend: Record<string, string[]> = {}
-    parcelas?.forEach((p: { lancamento_id: string; status: string }) => {
-      const atendId = lancAtendMap[p.lancamento_id]
-      if (atendId) {
-        if (!parcelasAtend[atendId]) parcelasAtend[atendId] = []
-        parcelasAtend[atendId].push(p.status)
-      }
-    })
-
-    // Buscar radiografias
+    // Buscar contagem de radiografias por atendimento
+    const atendIds = atend.map((a: typeof atend[number]) => a.id)
     const { data: rxCounts } = await supabase
       .from('radiografias')
       .select('atendimento_id')
@@ -112,31 +80,16 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       }
     })
 
-    // Montar resultado
-    const resultado: AtendimentoDetalhado[] = atend.map((a: typeof atend[number]) => {
-      const statusParcelas = parcelasAtend[a.id] ?? []
-      let status_pagamento: StatusPagamento = 'aberto'
-      if (statusParcelas.length > 0) {
-        if (statusParcelas.every((s) => s === 'pago')) {
-          status_pagamento = 'pago'
-        } else if (statusParcelas.some((s) => s === 'pago' || s === 'pago_parcial')) {
-          status_pagamento = 'parcial'
-        }
-      }
-
-      return {
-        id: a.id,
-        paciente_id: a.paciente_id,
-        data_atendimento: a.data_atendimento,
-        procedimento_id: a.procedimento_id,
-        procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
-        descricao: a.descricao,
-        valor_total: a.valor_total,
-        dentista_nome: a.dentista_id ? (dentistaMap[a.dentista_id] ?? null) : null,
-        status_pagamento,
-        total_radiografias: rxPorAtend[a.id] ?? 0,
-      }
-    })
+    const resultado: AtendimentoDetalhado[] = atend.map((a: typeof atend[number]) => ({
+      id: a.id,
+      paciente_id: a.paciente_id,
+      data_atendimento: a.data_atendimento,
+      procedimento_id: a.procedimento_id,
+      procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
+      descricao: a.descricao,
+      dentista_nome: a.dentista_id ? (dentistaMap[a.dentista_id] ?? null) : null,
+      total_radiografias: rxPorAtend[a.id] ?? 0,
+    }))
 
     setAtendimentos(resultado)
     setCarregando(false)

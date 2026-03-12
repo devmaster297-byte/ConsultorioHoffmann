@@ -23,7 +23,7 @@ interface ParcelaRow {
   valor_pago: number | null
   data_vencimento: string
   data_pagamento: string | null
-  status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
+  status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido'
 }
 
 interface PacienteRow {
@@ -41,7 +41,7 @@ export interface MetricasMensais {
 }
 
 export interface ParcelaComLancamento extends Omit<FinanceiroParcela, 'status'> {
-  status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
+  status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido'
   lancamento: {
     id: string
     descricao: string
@@ -59,14 +59,12 @@ export interface Inadimplente {
   parcelas: ParcelaComLancamento[]
 }
 
-// ─── Utilitário: atualizar status vencido no banco ───────────────────────────
-// Problema 3: o status 'vencido' nunca era atualizado automaticamente.
-// Esta função corrige isso client-side antes de calcular as métricas,
-// evitando a necessidade de um cron job ou trigger no banco.
+// ─── Utilitário: atualizar status vencido no banco ────────────────────────────
+// Roda client-side antes de calcular métricas.
+// FIX: usa data local (não UTC) para evitar marcar parcelas de hoje como vencidas
+// em fusos GMT-3 após 21h.
 
 async function atualizarParcelasVencidas(clinicaId: string): Promise<void> {
-  // Usar data LOCAL (não UTC). toISOString() usa UTC — no Brasil (UTC-3), às 21h
-  // o UTC já virou "amanhã", o que marcaria parcelas de hoje como vencidas incorretamente.
   const agora = new Date()
   const hoje = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000)
     .toISOString().split('T')[0]
@@ -102,10 +100,8 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     if (!clinicaId) return
     setCarregando(true)
 
-    // FIX 3: Atualizar parcelas vencidas antes de calcular qualquer métrica
     await atualizarParcelasVencidas(clinicaId)
 
-    // Buscar apenas IDs dos lançamentos da clínica
     const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, tipo, descricao, valor_total, paciente_id, atendimento_id')
@@ -117,24 +113,25 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
       lancamentos.map((l) => [l.id, l])
     )
 
-    // ── MÉTRICAS DE RECEITA ───────────────────────────────────────────────────
-    // FIX 1: Filtrar por DATA DE PAGAMENTO (não por vencimento).
-    // Receita só entra no mês em que o dinheiro entrou de fato.
-    let parcelasReceita: ParcelaRow[] = []
-    if (lancIds.length > 0) {
-      const { data: receitaRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('*')
-        .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
-        .in('status', ['pago', 'pago_parcial'])
-        .gte('data_pagamento', inicioMes)
-        .lte('data_pagamento', fimMes)
-
-      parcelasReceita = (receitaRaw ?? []) as unknown as ParcelaRow[]
+    if (lancIds.length === 0) {
+      setMetricas({ totalRecebido: 0, totalPendente: 0, totalDespesas: 0, saldo: 0 })
+      setProximosVencimentos([])
+      setCarregando(false)
+      return
     }
 
-    // FIX 5: Filtrar apenas parcelas de lançamentos do tipo 'receita'
+    // ── RECEITA: filtrar por data de PAGAMENTO ────────────────────────────────
+    const { data: receitaRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
+      .eq('clinica_id', clinicaId)
+      .in('lancamento_id', lancIds)
+      .in('status', ['pago', 'pago_parcial'])
+      .gte('data_pagamento', inicioMes)
+      .lte('data_pagamento', fimMes)
+
+    const parcelasReceita = (receitaRaw ?? []) as unknown as ParcelaRow[]
+
     let totalRecebido = 0
     for (const p of parcelasReceita) {
       const lanc = lancMap[p.lancamento_id]
@@ -142,53 +139,42 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
       totalRecebido += p.valor_pago ?? p.valor
     }
 
-    // ── MÉTRICAS DE PENDENTE (vencimento no mês, não pagas) ──────────────────
-    // Pendente usa vencimento porque são valores ainda não pagos
-    let parcelasPendentes: ParcelaRow[] = []
-    if (lancIds.length > 0) {
-      const { data: pendentesRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('*')
-        .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
-        .in('status', ['pendente', 'vencido'])
-        .gte('data_vencimento', inicioMes)
-        .lte('data_vencimento', fimMes)
+    // ── PENDENTE: filtrar por VENCIMENTO no mês ──────────────────────────────
+    const { data: pendentesRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
+      .eq('clinica_id', clinicaId)
+      .in('lancamento_id', lancIds)
+      .in('status', ['pendente', 'vencido'])
+      .gte('data_vencimento', inicioMes)
+      .lte('data_vencimento', fimMes)
 
-      parcelasPendentes = (pendentesRaw ?? []) as unknown as ParcelaRow[]
-    }
+    const parcelasPendentes = (pendentesRaw ?? []) as unknown as ParcelaRow[]
 
     let totalPendente = 0
     for (const p of parcelasPendentes) {
       const lanc = lancMap[p.lancamento_id]
       if (!lanc || lanc.tipo !== 'receita') continue
-      // FIX 4: usar saldo real (valor - já pago) para pago_parcial
+      // FIX: saldo real = valor - já pago (para pago_parcial)
       totalPendente += p.valor - (p.valor_pago ?? 0)
     }
 
-    // ── MÉTRICAS DE DESPESA ───────────────────────────────────────────────────
-    // FIX 1 + 2: Despesa filtrada por DATA DE PAGAMENTO e somente se paga.
-    // Despesa pendente NÃO entra no fluxo de caixa do mês.
-    let parcelasDespesa: ParcelaRow[] = []
-    if (lancIds.length > 0) {
-      const { data: despesaRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('*')
-        .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
-        .in('status', ['pago', 'pago_parcial'])
-        .gte('data_pagamento', inicioMes)
-        .lte('data_pagamento', fimMes)
+    // ── DESPESA: filtrar por data de PAGAMENTO ────────────────────────────────
+    const { data: despesaRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
+      .eq('clinica_id', clinicaId)
+      .in('lancamento_id', lancIds)
+      .in('status', ['pago', 'pago_parcial'])
+      .gte('data_pagamento', inicioMes)
+      .lte('data_pagamento', fimMes)
 
-      parcelasDespesa = (despesaRaw ?? []) as unknown as ParcelaRow[]
-    }
+    const parcelasDespesa = (despesaRaw ?? []) as unknown as ParcelaRow[]
 
     let totalDespesas = 0
     for (const p of parcelasDespesa) {
       const lanc = lancMap[p.lancamento_id]
-      // FIX 5: apenas lançamentos explicitamente do tipo 'despesa'
       if (!lanc || lanc.tipo !== 'despesa') continue
-      // FIX 2: somente o valor efetivamente pago (nunca o valor nominal)
       totalDespesas += p.valor_pago ?? p.valor
     }
 
@@ -200,25 +186,23 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
     })
 
     // ── PRÓXIMOS VENCIMENTOS (7 dias) ─────────────────────────────────────────
-    const hoje = new Date().toISOString().split('T')[0]
+    const agora = new Date()
+    const hojeStr = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000)
+      .toISOString().split('T')[0]
     const em7Dias = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    let proxVenc: ParcelaRow[] = []
-    if (lancIds.length > 0) {
-      const { data: proxVencRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('*')
-        .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
-        .in('status', ['pendente', 'pago_parcial'])
-        .gte('data_vencimento', hoje)
-        .lte('data_vencimento', em7Dias)
-        .order('data_vencimento')
-        .limit(10)
+    const { data: proxVencRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
+      .eq('clinica_id', clinicaId)
+      .in('lancamento_id', lancIds)
+      .in('status', ['pendente', 'pago_parcial'])
+      .gte('data_vencimento', hojeStr)
+      .lte('data_vencimento', em7Dias)
+      .order('data_vencimento')
+      .limit(10)
 
-      proxVenc = (proxVencRaw ?? []) as unknown as ParcelaRow[]
-    }
-
+    const proxVenc = (proxVencRaw ?? []) as unknown as ParcelaRow[]
     const proxComPaciente = await enriquecerParcelas(proxVenc, clinicaId)
     setProximosVencimentos(proxComPaciente)
 
@@ -242,10 +226,8 @@ export function useInadimplentes(clinicaId: string) {
     if (!clinicaId) return
     setCarregando(true)
 
-    // FIX 3: atualizar vencidos antes de listar inadimplentes
     await atualizarParcelasVencidas(clinicaId)
 
-    // Lançamentos de receita com paciente vinculado
     const { data: lancamentosRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, descricao, paciente_id, atendimento_id, tipo, valor_total')
@@ -266,7 +248,6 @@ export function useInadimplentes(clinicaId: string) {
       lancamentos.map((l) => [l.id, l])
     )
 
-    // Parcelas pendentes, pago_parcial ou vencidas com saldo em aberto
     const { data: parcelasRaw } = await supabase
       .from('financeiro_parcelas')
       .select('*')
@@ -338,7 +319,7 @@ export function useInadimplentes(clinicaId: string) {
         }
       }
 
-      // FIX 4: saldo real = valor - valor já pago (nunca negativo)
+      // FIX: saldo real = valor - já pago (nunca negativo)
       const saldoParcela = Math.max(0, p.valor - (p.valor_pago ?? 0))
       grupos[pacId].total_vencido += saldoParcela
       grupos[pacId].parcelas.push(p)
@@ -371,7 +352,9 @@ export async function baixarParcela(
   parcelaId: string,
   valorPago?: number
 ): Promise<boolean> {
-  const hoje = new Date().toISOString().split('T')[0]
+  const agora = new Date()
+  const hoje = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000)
+    .toISOString().split('T')[0]
 
   const { data: parcelaRaw } = await supabase
     .from('financeiro_parcelas')
@@ -382,7 +365,7 @@ export async function baixarParcela(
   const parcela = parcelaRaw as unknown as { valor: number; valor_pago: number | null } | null
   if (!parcela) return false
 
-  // FIX 4: acumular pagamentos parciais anteriores
+  // FIX: acumular pagamentos parciais anteriores
   const jaFoiPago = parcela.valor_pago ?? 0
   const novoPagamento = valorPago ?? parcela.valor
   const totalPago = jaFoiPago + novoPagamento
@@ -401,27 +384,32 @@ export async function baixarParcela(
 }
 
 export async function baixarParcelasEmLote(parcelaIds: string[]): Promise<boolean> {
-  const hoje = new Date().toISOString().split('T')[0]
+  const agora = new Date()
+  const hoje = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000)
+    .toISOString().split('T')[0]
 
+  // FIX: buscar valor_pago atual para acumular pagamentos parciais
   const { data: parcelasRaw } = await supabase
     .from('financeiro_parcelas')
-    .select('id, valor')
+    .select('id, valor, valor_pago')
     .in('id', parcelaIds)
 
   const parcelas = (parcelasRaw ?? []) as unknown as ParcelaValorRow[]
   if (parcelas.length === 0) return false
 
   const resultados = await Promise.all(
-    parcelas.map((p) =>
-      supabase
+    parcelas.map((p) => {
+      const jaFoiPago = p.valor_pago ?? 0
+      const totalPago = Math.min(jaFoiPago + p.valor, p.valor)
+      return supabase
         .from('financeiro_parcelas')
         .update({
           status: 'pago',
-          valor_pago: p.valor,
+          valor_pago: Number(totalPago.toFixed(2)),
           data_pagamento: hoje,
         })
         .eq('id', p.id)
-    )
+    })
   )
 
   return resultados.every((r) => !r.error)
@@ -433,7 +421,6 @@ export interface CriarLancamentoInput {
   clinicaId: string
   pacienteId?: string
   atendimentoId?: string
-  orcamentoId?: string
   tipo: 'receita' | 'despesa'
   descricao: string
   valorTotal: number
@@ -470,10 +457,21 @@ export async function criarLancamento(
   }
 
   const valorParcela = Number((input.valorTotal / input.numParcelas).toFixed(2))
+
   const parcelas = Array.from({ length: input.numParcelas }, (_, i) => {
-    // T12:00:00 evita bug de fuso horário que avança/recua um dia
-    const dataVenc = new Date(input.primeiroVencimento + 'T12:00:00')
-    dataVenc.setMonth(dataVenc.getMonth() + i)
+    // FIX: avançar meses corretamente sem usar setMonth direto.
+    // Parseamos ano/mês/dia do primeiroVencimento e somamos meses manualmente,
+    // respeitando o último dia do mês destino.
+    const [anoBase, mesBase, diaBase] = input.primeiroVencimento.split('-').map(Number)
+    const mesDestino = mesBase - 1 + i         // mês 0-indexed
+    const anoDestino = anoBase + Math.floor(mesDestino / 12)
+    const mesNorm    = (mesDestino % 12) + 1   // volta para 1-indexed
+
+    // Último dia do mês destino
+    const ultimoDia = new Date(anoDestino, mesNorm, 0).getDate()
+    const diaFinal  = Math.min(diaBase, ultimoDia)
+
+    const venc = `${anoDestino}-${String(mesNorm).padStart(2, '0')}-${String(diaFinal).padStart(2, '0')}`
 
     const isUltima = i === input.numParcelas - 1
     const valorAcumulado = valorParcela * (input.numParcelas - 1)
@@ -486,7 +484,7 @@ export async function criarLancamento(
       clinica_id: input.clinicaId,
       numero: i + 1,
       valor: valorFinal,
-      data_vencimento: dataVenc.toISOString().split('T')[0],
+      data_vencimento: venc,
       status: 'pendente' as const,
     }
   })
