@@ -3,38 +3,33 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Save, Percent, Info, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Save, Percent, Info } from 'lucide-react'
 import { useComissaoStore } from '@/store/comissao.store'
 import { formatarMoeda } from '@/lib/utils'
 
 export default function ComissaoPage() {
   const router = useRouter()
-  const {
-    percentualRepasse,
-    percentualSecretaria,
-    setPercentualRepasse,
-    setPercentualSecretaria,
-  } = useComissaoStore()
+  const { percentualRosiele, percentualPatricia, setPercentualRosiele, setPercentualPatricia } = useComissaoStore()
 
-  const [repasse, setRepasse]         = useState(percentualRepasse.toString())
-  const [secretaria, setSecretaria]   = useState(percentualSecretaria.toString())
-  const [salvo, setSalvo]             = useState(false)
+  const [pRosiele,  setPRosiele]  = useState(percentualRosiele.toString())
+  const [pPatricia, setPPatricia] = useState(percentualPatricia.toString())
+  const [salvo, setSalvo] = useState(false)
 
   function salvar() {
-    const r = parseFloat(repasse)
-    const s = parseFloat(secretaria)
+    const r = parseFloat(pRosiele)
+    const p = parseFloat(pPatricia)
     if (isNaN(r) || r < 0 || r > 100) return
-    if (isNaN(s) || s < 0 || s > 100) return
-    setPercentualRepasse(r)
-    setPercentualSecretaria(s)
+    if (isNaN(p) || p < 0 || p > 100) return
+    if (r + p > 100) return
+    setPercentualRosiele(r)
+    setPercentualPatricia(p)
     setSalvo(true)
     setTimeout(() => setSalvo(false), 2000)
   }
 
-  const r = parseFloat(repasse)   || 0
-  const s = parseFloat(secretaria) || 0
-
-  // Exemplos de cálculo
+  const r = parseFloat(pRosiele)  || 0
+  const p = parseFloat(pPatricia) || 0
+  const eduardo = Math.max(0, 100 - r - p)
   const exemplos = [500, 1000, 2000, 5000]
 
   return (
@@ -48,113 +43,100 @@ export default function ComissaoPage() {
 
       <div className="px-4 py-6 space-y-4">
 
-        {/* Explicação do modelo */}
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-4 space-y-3">
+        {/* Explicação */}
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-4 space-y-2">
           <div className="flex gap-2">
             <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className="text-xs font-semibold text-blue-800">Como funciona</p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-blue-700 flex-wrap">
-            <span className="bg-white rounded-lg px-2 py-1 font-semibold border border-blue-200">Dr. Eduardo recebe X</span>
-            <ArrowRight className="h-3 w-3 flex-shrink-0" />
-            <span className="bg-white rounded-lg px-2 py-1 font-semibold border border-blue-200">Paga {r}% à Dra. Rosiele</span>
-            <ArrowRight className="h-3 w-3 flex-shrink-0" />
-            <span className="bg-white rounded-lg px-2 py-1 font-semibold border border-blue-200">Patricia recebe {s}% desse repasse</span>
-          </div>
+          <p className="text-xs text-blue-700 leading-relaxed">
+            Sobre tudo que o <strong>Dr. Eduardo</strong> recebe: <strong>{r}%</strong> vai para a
+            <strong> Drª Rosiele</strong> (uso do espaço) e <strong>{p}%</strong> vai para
+            <strong> Patricia</strong> (comissão). Eduardo fica com os <strong>{eduardo.toFixed(1)}%</strong> restantes.
+          </p>
         </div>
 
-        {/* Dentistas */}
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dentistas</p>
-
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-50 border border-purple-100">
-            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-700 flex-shrink-0">RH</div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900">Drª Rosiele Hoffmann</p>
-              <p className="text-xs text-gray-500">Proprietária da clínica</p>
+        {/* Distribuição visual */}
+        {r + p > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Distribuição do bruto do Dr. Eduardo</p>
+            <div className="flex h-4 rounded-full overflow-hidden gap-0.5">
+              <div className="bg-blue-500 transition-all" style={{ width: `${eduardo}%` }} title={`Eduardo ${eduardo.toFixed(0)}%`} />
+              <div className="bg-purple-500 transition-all" style={{ width: `${r}%` }} title={`Rosiele ${r}%`} />
+              <div className="bg-emerald-500 transition-all" style={{ width: `${p}%` }} title={`Patricia ${p}%`} />
             </div>
-            <span className="text-xs bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded-full">Titular</span>
-          </div>
-
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 border border-blue-100">
-            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700 flex-shrink-0">EC</div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900">Drº Eduardo Cortelleti</p>
-              <p className="text-xs text-gray-500">Repassa {r}% à Dra. Rosiele</p>
+            <div className="flex gap-4 text-xs">
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-500 inline-block" /> Eduardo {eduardo.toFixed(0)}%</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-purple-500 inline-block" /> Rosiele {r}%</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block" /> Patricia {p}%</span>
             </div>
-            <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">{r}%</span>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 flex-shrink-0">P</div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900">Patricia (Secretária)</p>
-              <p className="text-xs text-gray-500">{s}% sobre o repasse do Dr. Eduardo</p>
-            </div>
-            <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">{s}% do repasse</span>
-          </div>
-        </div>
-
-        {/* Configuração dos percentuais */}
+        {/* Configuração */}
         <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Percentuais</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Percentuais sobre o bruto do Dr. Eduardo</p>
 
+          {/* Rosiele */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Repasse do Dr. Eduardo para a Dra. Rosiele
-            </label>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="h-6 w-6 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700">RH</div>
+              <label className="text-sm font-medium text-gray-700">Drª Rosiele Hoffmann</label>
+            </div>
             <div className="relative">
               <input
                 type="number" min="0" max="100" step="0.5"
-                value={repasse}
-                onChange={(e) => setRepasse(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-lg font-bold text-gray-900 focus:border-blue-500 focus:outline-none"
+                value={pRosiele}
+                onChange={(e) => setPRosiele(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-lg font-bold text-gray-900 focus:border-purple-500 focus:outline-none"
               />
               <Percent className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
             </div>
           </div>
 
+          {/* Patricia */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Comissão da Patricia sobre o repasse
-            </label>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="h-6 w-6 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700">P</div>
+              <label className="text-sm font-medium text-gray-700">Patricia (Secretária)</label>
+            </div>
             <div className="relative">
               <input
                 type="number" min="0" max="100" step="0.5"
-                value={secretaria}
-                onChange={(e) => setSecretaria(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-lg font-bold text-gray-900 focus:border-blue-500 focus:outline-none"
+                value={pPatricia}
+                onChange={(e) => setPPatricia(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-lg font-bold text-gray-900 focus:border-emerald-500 focus:outline-none"
               />
               <Percent className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Equivale a {(r * s / 100).toFixed(2)}% do faturamento bruto do Dr. Eduardo
-            </p>
           </div>
+
+          {r + p > 100 && (
+            <p className="text-xs text-red-500">⚠️ A soma ultrapassa 100%. Ajuste os valores.</p>
+          )}
         </div>
 
-        {/* Tabela de exemplos */}
-        {r > 0 && (
+        {/* Simulação */}
+        {r + p > 0 && r + p <= 100 && (
           <div className="bg-white rounded-2xl shadow-sm p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Simulação</p>
             <div className="space-y-0 divide-y divide-gray-50">
-              {/* Cabeçalho */}
               <div className="grid grid-cols-4 pb-2">
                 <p className="text-xs text-gray-400 font-medium">Dr. Eduardo</p>
-                <p className="text-xs text-gray-400 font-medium text-right">Repasse ({r}%)</p>
-                <p className="text-xs text-emerald-600 font-medium text-right">Patricia ({s}%)</p>
+                <p className="text-xs text-blue-600 font-medium text-right">Eduardo</p>
                 <p className="text-xs text-purple-600 font-medium text-right">Rosiele</p>
+                <p className="text-xs text-emerald-600 font-medium text-right">Patricia</p>
               </div>
               {exemplos.map(ex => {
-                const rep   = ex * r / 100
-                const pat   = rep * s / 100
-                const ros   = rep - pat
+                const ros = ex * r / 100
+                const pat = ex * p / 100
+                const edl = ex - ros - pat
                 return (
                   <div key={ex} className="grid grid-cols-4 py-2.5">
                     <p className="text-sm font-semibold text-gray-800">{formatarMoeda(ex)}</p>
-                    <p className="text-sm text-blue-700 text-right">{formatarMoeda(rep)}</p>
-                    <p className="text-sm text-emerald-600 text-right font-semibold">{formatarMoeda(pat)}</p>
+                    <p className="text-sm text-blue-700 text-right">{formatarMoeda(edl)}</p>
                     <p className="text-sm text-purple-600 text-right">{formatarMoeda(ros)}</p>
+                    <p className="text-sm font-semibold text-emerald-600 text-right">{formatarMoeda(pat)}</p>
                   </div>
                 )
               })}
@@ -164,8 +146,9 @@ export default function ComissaoPage() {
 
         <button
           onClick={salvar}
+          disabled={r + p > 100}
           className={`w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-semibold transition-colors ${
-            salvo ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white active:bg-blue-700'
+            salvo ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white active:bg-blue-700 disabled:opacity-50'
           }`}
         >
           <Save className="h-4 w-4" />

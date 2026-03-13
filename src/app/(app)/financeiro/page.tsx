@@ -363,7 +363,7 @@ export default function FinanceiroPage() {
   const { metricas, proximosVencimentos, carregando, recarregar } = useFinanceiro(clinicaId ?? '', mes)
   const { recebimentos, total: totalRecebido, carregando: carregandoRec } = useRecebimentos(clinicaId ?? '', mes)
   const { orcamentos, carregando: carregandoOrc } = useOrcamentosFinanceiro(clinicaId ?? '')
-  const { percentualRepasse, percentualSecretaria } = useComissaoStore()
+  const { percentualRosiele, percentualPatricia } = useComissaoStore()
   const { porDentista, carregando: carregandoCom } = useComissaoDentista(clinicaId ?? '', mesCom)
 
   function navMes(dir: -1 | 1) {
@@ -814,7 +814,7 @@ export default function FinanceiroPage() {
 
             <div className="bg-gray-100 rounded-xl px-4 py-2.5 flex items-center justify-between">
               <p className="text-xs text-gray-500">
-                Eduardo repassa <strong>{percentualRepasse}%</strong> · Patricia recebe <strong>{percentualSecretaria}%</strong> do repasse
+                Rosiele recebe <strong>{percentualRosiele}%</strong> · Patricia recebe <strong>{percentualPatricia}%</strong> do bruto do Dr. Eduardo
               </p>
               <Link href="/configuracoes/comissao" className="text-xs text-blue-600 font-semibold flex-shrink-0 ml-2">Editar</Link>
             </div>
@@ -829,10 +829,10 @@ export default function FinanceiroPage() {
               const rosiele = porDentista.find(d => d.dentistaKey === 'rosiele')
               const eduardo = porDentista.find(d => d.dentistaKey === 'eduardo')
               const eduardoTotal     = eduardo?.totalRecebido ?? 0
-              const repasseEduardo   = eduardoTotal * percentualRepasse / 100
-              const comissaoPatricia = repasseEduardo * percentualSecretaria / 100
-              const roseileTotal     = (rosiele?.totalRecebido ?? 0) + repasseEduardo - comissaoPatricia
-              const eduardoLiquido   = eduardoTotal - repasseEduardo
+              const paraRosiele      = eduardoTotal * percentualRosiele / 100
+              const paraPatricia     = eduardoTotal * percentualPatricia / 100
+              const roseileTotal     = (rosiele?.totalRecebido ?? 0) + paraRosiele
+              const eduardoLiquido   = eduardoTotal - paraRosiele - paraPatricia
               return (
                 <div className="space-y-3">
                   <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -849,8 +849,8 @@ export default function FinanceiroPage() {
                         <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(eduardoTotal)}</p>
                       </div>
                       <div className="px-3 py-3 text-center bg-purple-50">
-                        <p className="text-xs text-purple-500">Repasse ({percentualRepasse}%)</p>
-                        <p className="text-sm font-bold text-purple-700 mt-0.5">{formatarMoeda(repasseEduardo)}</p>
+                        <p className="text-xs text-purple-500">Para Rosiele ({percentualRosiele}%)</p>
+                        <p className="text-sm font-bold text-purple-700 mt-0.5">{formatarMoeda(paraRosiele)}</p>
                       </div>
                       <div className="px-3 py-3 text-center">
                         <p className="text-xs text-gray-400">Líquido</p>
@@ -889,8 +889,8 @@ export default function FinanceiroPage() {
                         <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(rosiele?.totalRecebido ?? 0)}</p>
                       </div>
                       <div className="px-3 py-3 text-center bg-blue-50">
-                        <p className="text-xs text-blue-500">+ Repasse EC</p>
-                        <p className="text-sm font-bold text-blue-700 mt-0.5">+{formatarMoeda(repasseEduardo - comissaoPatricia)}</p>
+                        <p className="text-xs text-blue-500">+ Do Dr. Eduardo</p>
+                        <p className="text-sm font-bold text-blue-700 mt-0.5">+{formatarMoeda(paraRosiele)}</p>
                       </div>
                       <div className="px-3 py-3 text-center">
                         <p className="text-xs text-purple-600 font-semibold">Total</p>
@@ -904,27 +904,27 @@ export default function FinanceiroPage() {
                       <div className="h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">P</div>
                       <div>
                         <p className="font-bold text-white text-sm">Patricia — Comissão do mês</p>
-                        <p className="text-xs text-emerald-200">{percentualSecretaria}% sobre o repasse de {formatarMoeda(repasseEduardo)}</p>
+                        <p className="text-xs text-emerald-200">{percentualPatricia}% sobre o bruto do Dr. Eduardo</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 divide-x divide-emerald-500 border-t border-emerald-500">
                       <div className="px-3 py-3 text-center">
-                        <p className="text-xs text-emerald-200">Base (repasse)</p>
-                        <p className="text-sm font-bold text-white mt-0.5">{formatarMoeda(repasseEduardo)}</p>
+                        <p className="text-xs text-emerald-200">Base (bruto)</p>
+                        <p className="text-sm font-bold text-white mt-0.5">{formatarMoeda(eduardoTotal)}</p>
                       </div>
                       <div className="px-3 py-3 text-center">
                         <p className="text-xs text-emerald-200">Percentual</p>
-                        <p className="text-sm font-bold text-white mt-0.5">{percentualSecretaria}%</p>
+                        <p className="text-sm font-bold text-white mt-0.5">{percentualPatricia}%</p>
                       </div>
                       <div className="px-3 py-3 text-center">
                         <p className="text-xs text-emerald-200 font-semibold">A receber</p>
-                        <p className="text-xl font-bold text-white mt-0.5">{formatarMoeda(comissaoPatricia)}</p>
+                        <p className="text-xl font-bold text-white mt-0.5">{formatarMoeda(paraPatricia)}</p>
                       </div>
                     </div>
                     {eduardoTotal > 0 && (
                       <div className="px-4 py-2 bg-emerald-700">
                         <p className="text-xs text-emerald-300 text-center">
-                          = {(percentualRepasse * percentualSecretaria / 100).toFixed(2)}% do bruto do Dr. Eduardo ({formatarMoeda(eduardoTotal)})
+                          {percentualPatricia}% direto do bruto do Dr. Eduardo ({formatarMoeda(eduardoTotal)})
                         </p>
                       </div>
                     )}
