@@ -1,23 +1,26 @@
 // src/store/comissao.store.ts
-// Armazena a % de comissão da secretária sobre os atendimentos do Dr. Eduardo
-// Persiste em localStorage — sem necessidade de alterar o banco
+// Modelo financeiro da clínica:
+// - Dr. Eduardo paga percentualRepasse% à Dra. Rosiele pelo uso do espaço
+// - Patricia recebe percentualSecretaria% sobre o repasse do Dr. Eduardo
+// Persiste em localStorage — sem coluna extra no banco.
+
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 interface ComissaoState {
-  percentualComissao: number           // ex: 10 = 10%
-  nomeDentistaComissao: string         // nome parcial para identificar o dentista
-  setPercentualComissao: (p: number) => void
-  setNomeDentistaComissao: (nome: string) => void
+  percentualRepasse:    number  // % que Eduardo paga à Rosiele (ex: 30)
+  percentualSecretaria: number  // % que Patricia recebe sobre o repasse (ex: 5)
+  setPercentualRepasse:    (p: number) => void
+  setPercentualSecretaria: (p: number) => void
 }
 
 export const useComissaoStore = create<ComissaoState>()(
   persist(
     (set) => ({
-      percentualComissao: 10,
-      nomeDentistaComissao: 'Eduardo',  // padrão: identifica Dr. Eduardo pelo nome
-      setPercentualComissao: (p) => set({ percentualComissao: p }),
-      setNomeDentistaComissao: (nome) => set({ nomeDentistaComissao: nome }),
+      percentualRepasse:    30,
+      percentualSecretaria: 5,
+      setPercentualRepasse:    (p) => set({ percentualRepasse: p }),
+      setPercentualSecretaria: (p) => set({ percentualSecretaria: p }),
     }),
     { name: 'hoffmann-comissao' }
   )

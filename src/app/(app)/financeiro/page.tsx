@@ -363,7 +363,7 @@ export default function FinanceiroPage() {
   const { metricas, proximosVencimentos, carregando, recarregar } = useFinanceiro(clinicaId ?? '', mes)
   const { recebimentos, total: totalRecebido, carregando: carregandoRec } = useRecebimentos(clinicaId ?? '', mes)
   const { orcamentos, carregando: carregandoOrc } = useOrcamentosFinanceiro(clinicaId ?? '')
-  const { percentualComissao } = useComissaoStore()
+  const { percentualRepasse, percentualSecretaria } = useComissaoStore()
   const { porDentista, carregando: carregandoCom } = useComissaoDentista(clinicaId ?? '', mesCom)
 
   function navMes(dir: -1 | 1) {
@@ -791,12 +791,10 @@ export default function FinanceiroPage() {
         {/* ── Comissão ── */}
         {aba === 'comissao' && (
           <>
-            {/* Seletor de mês */}
             <div className="flex items-center justify-between">
               <button onClick={() => {
                 const [ano, m] = mesCom.split('-').map(Number)
-                const d = new Date(ano, m - 2)
-                setMesCom(d.toISOString().slice(0, 7))
+                setMesCom(new Date(ano, m - 2).toISOString().slice(0, 7))
               }} className="p-2 rounded-xl active:bg-gray-100">
                 <ChevronLeft className="h-5 w-5 text-gray-500" />
               </button>
@@ -814,120 +812,129 @@ export default function FinanceiroPage() {
               </button>
             </div>
 
-            {/* Card de comissão configurada */}
-            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <Percent className="h-4 w-4 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-emerald-800">Comissão configurada</p>
-                  <p className="text-xs text-emerald-600">{percentualComissao}% sobre Dr. Eduardo · <Link href="/configuracoes/comissao" className="underline">Alterar</Link></p>
-                </div>
-              </div>
+            <div className="bg-gray-100 rounded-xl px-4 py-2.5 flex items-center justify-between">
+              <p className="text-xs text-gray-500">
+                Eduardo repassa <strong>{percentualRepasse}%</strong> · Patricia recebe <strong>{percentualSecretaria}%</strong> do repasse
+              </p>
+              <Link href="/configuracoes/comissao" className="text-xs text-blue-600 font-semibold flex-shrink-0 ml-2">Editar</Link>
             </div>
 
             {carregandoCom ? (
               <div className="space-y-3">
-                {[...Array(2)].map((_, i) => (
-                  <div key={i} className="h-40 rounded-2xl bg-gray-100 animate-pulse" />
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-36 rounded-2xl bg-gray-100 animate-pulse" />
                 ))}
               </div>
-            ) : (
-              <div className="space-y-4">
-                {porDentista.map((d) => {
-                  const isEduardo = d.dentistaKey === 'eduardo'
-                  const comissao = isEduardo ? (d.totalRecebido * percentualComissao / 100) : 0
-                  const dentInfo = DENTISTAS_CLINICA.find(x => x.key === d.dentistaKey)
-
-                  return (
-                    <div key={d.dentistaKey} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                      {/* Header */}
-                      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-                        <div className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${dentInfo?.cor ?? 'bg-gray-100 text-gray-600'}`}>
-                          {dentInfo?.initials}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-900 text-sm">{d.dentistaNome}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{d.numPagamentos} pagamento{d.numPagamentos !== 1 ? 's' : ''} em {nomeMes(mesCom)}</p>
-                        </div>
+            ) : (() => {
+              const rosiele = porDentista.find(d => d.dentistaKey === 'rosiele')
+              const eduardo = porDentista.find(d => d.dentistaKey === 'eduardo')
+              const eduardoTotal     = eduardo?.totalRecebido ?? 0
+              const repasseEduardo   = eduardoTotal * percentualRepasse / 100
+              const comissaoPatricia = repasseEduardo * percentualSecretaria / 100
+              const roseileTotal     = (rosiele?.totalRecebido ?? 0) + repasseEduardo - comissaoPatricia
+              const eduardoLiquido   = eduardoTotal - repasseEduardo
+              return (
+                <div className="space-y-3">
+                  <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700 flex-shrink-0">EC</div>
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm">Drº Eduardo Cortelleti</p>
+                        <p className="text-xs text-gray-400">{eduardo?.numPagamentos ?? 0} pagamento{(eduardo?.numPagamentos ?? 0) !== 1 ? 's' : ''} em {nomeMes(mesCom)}</p>
                       </div>
-
-                      {/* Métricas */}
-                      <div className={`grid divide-x divide-gray-100 border-t border-gray-100 ${isEduardo ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                        <div className="px-3 py-3 text-center">
-                          <p className="text-xs text-gray-400">Recebido</p>
-                          <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(d.totalRecebido)}</p>
-                        </div>
-                        {isEduardo && (
-                          <div className="px-3 py-3 text-center bg-emerald-50">
-                            <p className="text-xs text-emerald-600">Comissão ({percentualComissao}%)</p>
-                            <p className="text-sm font-bold text-emerald-700 mt-0.5">{formatarMoeda(comissao)}</p>
-                          </div>
-                        )}
-                        <div className="px-3 py-3 text-center">
-                          <p className="text-xs text-gray-400">{isEduardo ? 'Líquido' : 'Líquido'}</p>
-                          <p className="text-sm font-bold text-blue-700 mt-0.5">{formatarMoeda(d.totalRecebido - comissao)}</p>
-                        </div>
-                      </div>
-
-                      {/* Lista de pagamentos */}
-                      {d.pagamentos.length > 0 && (
-                        <div className="border-t border-gray-50">
-                          {d.pagamentos.slice(0, 5).map((p, i) => (
-                            <div key={p.id} className={`flex items-center justify-between px-4 py-2.5 ${i < d.pagamentos.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-gray-800 truncate">
-                                  {p.paciente_nome ?? p.descricao}
-                                </p>
-                                {p.paciente_nome && (
-                                  <p className="text-xs text-gray-400 truncate">{p.descricao}</p>
-                                )}
-                                <p className="text-xs text-gray-300">{formatarData(p.data)}</p>
-                              </div>
-                              <div className="flex-shrink-0 ml-3 text-right">
-                                <p className="text-xs font-bold text-gray-700">{formatarMoeda(p.valor)}</p>
-                                {isEduardo && (
-                                  <p className="text-xs text-emerald-600">{formatarMoeda(p.valor * percentualComissao / 100)}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                          {d.pagamentos.length > 5 && (
-                            <div className="px-4 py-2 text-center">
-                              <p className="text-xs text-gray-400">+{d.pagamentos.length - 5} pagamentos</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {d.pagamentos.length === 0 && (
-                        <div className="px-4 py-4 text-center border-t border-gray-50">
-                          <p className="text-xs text-gray-400">Nenhum pagamento em {nomeMes(mesCom)}</p>
-                        </div>
-                      )}
                     </div>
-                  )
-                })}
-
-                {/* Resumo total de comissão */}
-                {porDentista.some(d => d.dentistaKey === 'eduardo' && d.totalRecebido > 0) && (
-                  <div className="bg-emerald-600 rounded-2xl px-4 py-4">
-                    <p className="text-xs text-emerald-200 font-medium">Total comissão da secretária em {nomeMes(mesCom)}</p>
-                    <p className="text-2xl font-bold text-white mt-1">
-                      {formatarMoeda(
-                        (porDentista.find(d => d.dentistaKey === 'eduardo')?.totalRecebido ?? 0) * percentualComissao / 100
-                      )}
-                    </p>
-                    <p className="text-xs text-emerald-300 mt-1">
-                      {percentualComissao}% de {formatarMoeda(porDentista.find(d => d.dentistaKey === 'eduardo')?.totalRecebido ?? 0)}
-                    </p>
+                    <div className="grid grid-cols-3 divide-x divide-gray-100 border-t border-gray-100">
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-gray-400">Bruto</p>
+                        <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(eduardoTotal)}</p>
+                      </div>
+                      <div className="px-3 py-3 text-center bg-purple-50">
+                        <p className="text-xs text-purple-500">Repasse ({percentualRepasse}%)</p>
+                        <p className="text-sm font-bold text-purple-700 mt-0.5">{formatarMoeda(repasseEduardo)}</p>
+                      </div>
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-gray-400">Líquido</p>
+                        <p className="text-sm font-bold text-blue-700 mt-0.5">{formatarMoeda(eduardoLiquido)}</p>
+                      </div>
+                    </div>
+                    {(eduardo?.pagamentos.length ?? 0) > 0 && (
+                      <div className="border-t border-gray-50">
+                        {eduardo!.pagamentos.slice(0, 4).map((p, i) => (
+                          <div key={p.id} className={`flex items-center justify-between px-4 py-2.5 ${i < eduardo!.pagamentos.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-800 truncate">{p.paciente_nome ?? p.descricao}</p>
+                              <p className="text-xs text-gray-400">{formatarData(p.data)}</p>
+                            </div>
+                            <p className="text-xs font-bold text-gray-700 ml-3 flex-shrink-0">{formatarMoeda(p.valor)}</p>
+                          </div>
+                        ))}
+                        {(eduardo?.pagamentos.length ?? 0) > 4 && (
+                          <p className="text-center text-xs text-gray-400 py-2">+{(eduardo?.pagamentos.length ?? 0) - 4} mais</p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
+
+                  <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+                      <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-700 flex-shrink-0">RH</div>
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm">Drª Rosiele Hoffmann</p>
+                        <p className="text-xs text-gray-400">Produção própria + repasse líquido do Dr. Eduardo</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 divide-x divide-gray-100 border-t border-gray-100">
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-gray-400">Próprio</p>
+                        <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(rosiele?.totalRecebido ?? 0)}</p>
+                      </div>
+                      <div className="px-3 py-3 text-center bg-blue-50">
+                        <p className="text-xs text-blue-500">+ Repasse EC</p>
+                        <p className="text-sm font-bold text-blue-700 mt-0.5">+{formatarMoeda(repasseEduardo - comissaoPatricia)}</p>
+                      </div>
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-purple-600 font-semibold">Total</p>
+                        <p className="text-sm font-bold text-purple-700 mt-0.5">{formatarMoeda(roseileTotal)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-600 rounded-2xl overflow-hidden">
+                    <div className="px-4 pt-4 pb-3 flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">P</div>
+                      <div>
+                        <p className="font-bold text-white text-sm">Patricia — Comissão do mês</p>
+                        <p className="text-xs text-emerald-200">{percentualSecretaria}% sobre o repasse de {formatarMoeda(repasseEduardo)}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 divide-x divide-emerald-500 border-t border-emerald-500">
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-emerald-200">Base (repasse)</p>
+                        <p className="text-sm font-bold text-white mt-0.5">{formatarMoeda(repasseEduardo)}</p>
+                      </div>
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-emerald-200">Percentual</p>
+                        <p className="text-sm font-bold text-white mt-0.5">{percentualSecretaria}%</p>
+                      </div>
+                      <div className="px-3 py-3 text-center">
+                        <p className="text-xs text-emerald-200 font-semibold">A receber</p>
+                        <p className="text-xl font-bold text-white mt-0.5">{formatarMoeda(comissaoPatricia)}</p>
+                      </div>
+                    </div>
+                    {eduardoTotal > 0 && (
+                      <div className="px-4 py-2 bg-emerald-700">
+                        <p className="text-xs text-emerald-300 text-center">
+                          = {(percentualRepasse * percentualSecretaria / 100).toFixed(2)}% do bruto do Dr. Eduardo ({formatarMoeda(eduardoTotal)})
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </>
         )}
+
       </div>
     </div>
   )

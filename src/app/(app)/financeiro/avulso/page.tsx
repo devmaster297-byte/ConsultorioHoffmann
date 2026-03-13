@@ -1,87 +1,233 @@
 // src/app/(app)/financeiro/avulso/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ClipboardList, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
+import { formatarMoeda } from '@/lib/utils'
 
-// Dentistas fixos da clínica
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
 const DENTISTAS = [
-  { id: 'rosiele', nome: 'Drª Rosiele Hoffmann',  initials: 'RH' },
-  { id: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC' },
+  { key: 'rosiele', nome: 'Drª Rosiele Hoffmann',  initials: 'RH' },
+  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC' },
 ]
 
 const FORMAS = [
-  { id: 'pix',            label: 'PIX',         emoji: '📱' },
-  { id: 'dinheiro',       label: 'Dinheiro',    emoji: '💵' },
-  { id: 'cartao_credito', label: 'Crédito',     emoji: '💳' },
-  { id: 'cartao_debito',  label: 'Débito',      emoji: '💳' },
+  { id: 'pix',            label: 'PIX',           emoji: '📱' },
+  { id: 'dinheiro',       label: 'Dinheiro',      emoji: '💵' },
+  { id: 'cartao_credito', label: 'Crédito',       emoji: '💳' },
+  { id: 'cartao_debito',  label: 'Débito',        emoji: '💳' },
   { id: 'transferencia',  label: 'Transferência', emoji: '🏦' },
-  { id: 'boleto',         label: 'Boleto',      emoji: '📄' },
+  { id: 'boleto',         label: 'Boleto',        emoji: '📄' },
 ]
+
+// ─── Modal: Registrar Atendimento? ────────────────────────────────────────────
+
+function ModalAtendimento({
+  pacienteNome,
+  descricaoPagamento,
+  valor,
+  dentistaNome,
+  onConfirmar,
+  onPular,
+}: {
+  pacienteNome: string
+  descricaoPagamento: string
+  valor: number
+  dentistaNome: string
+  onConfirmar: (procedimentoId: string | null, observacoes: string) => void
+  onPular: () => void
+}) {
+  const { clinicaId } = useAuthStore()
+  const [procedimentos, setProcedimentos] = useState<{ id: string; nome: string }[]>([])
+  const [procedimentoId, setProcedimentoId] = useState('')
+  const [observacoes, setObservacoes] = useState(descricaoPagamento)
+  const [salvando, setSalvando] = useState(false)
+
+  useEffect(() => {
+    if (!clinicaId) return
+    supabase
+      .from('procedimentos')
+      .select('id, nome')
+      .eq('clinica_id', clinicaId)
+      .eq('ativo', true)
+      .order('nome')
+      .then(({ data }) => setProcedimentos((data ?? []) as { id: string; nome: string }[]))
+  }, [clinicaId])
+
+  function handleConfirmar() {
+    setSalvando(true)
+    onConfirmar(procedimentoId || null, observacoes)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/50">
+      <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: 'calc(100dvh - 60px)' }}>
+
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Registrar Atendimento?</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Pagamento de {formatarMoeda(valor)} registrado para <strong>{pacienteNome}</strong>
+            </p>
+          </div>
+          <button onClick={onPular} className="p-1 rounded-full hover:bg-gray-100">
+            <X className="h-5 w-5 text-gray-400" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          {/* Info resumida */}
+          <div className="bg-emerald-50 rounded-xl px-4 py-3 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center text-lg flex-shrink-0">✓</div>
+            <div>
+              <p className="text-xs font-semibold text-emerald-800">Pagamento salvo com sucesso</p>
+              <p className="text-xs text-emerald-600">{dentistaNome} · {formatarMoeda(valor)}</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-600">
+            Deseja também criar um <strong>registro de atendimento</strong> para <strong>{pacienteNome}</strong>
+            no histórico do paciente?
+          </p>
+
+          {/* Procedimento */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Procedimento <span className="font-normal normal-case text-gray-400">(opcional)</span>
+            </label>
+            <div className="relative">
+              <select
+                value={procedimentoId}
+                onChange={(e) => setProcedimentoId(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-gray-200 px-4 py-3 text-sm bg-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">Selecione o procedimento...</option>
+                {procedimentos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Observações
+            </label>
+            <textarea
+              value={observacoes}
+              onChange={(e) => setObservacoes(e.target.value)}
+              rows={3}
+              placeholder="Anotações sobre o atendimento..."
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Botões */}
+        <div
+          className="flex-shrink-0 px-5 pt-3 pb-8 border-t border-gray-100 space-y-2 bg-white"
+        >
+          <button
+            onClick={handleConfirmar}
+            disabled={salvando}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
+          >
+            <ClipboardList className="h-4 w-4" />
+            {salvando ? 'Salvando...' : 'Sim, registrar atendimento'}
+          </button>
+          <button
+            onClick={onPular}
+            className="w-full rounded-2xl bg-gray-100 py-3.5 text-sm font-medium text-gray-600 active:bg-gray-200"
+          >
+            Não, apenas o pagamento
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function PagamentoAvulsoPage() {
   const router = useRouter()
-  const { clinicaId } = useAuthStore()
+  const { clinicaId, usuario } = useAuthStore()
   const hoje = new Date().toISOString().split('T')[0]
 
-  const [descricao, setDescricao] = useState('')
-  const [valor, setValor] = useState('')
-  const [forma, setForma] = useState('pix')
-  const [data, setData] = useState(hoje)
+  // Campos do pagamento
+  const [descricao, setDescricao]   = useState('')
+  const [valor, setValor]           = useState('')
+  const [forma, setForma]           = useState('pix')
+  const [data, setData]             = useState(hoje)
   const [dentistaKey, setDentistaKey] = useState<string>('rosiele')
-  const [pacienteNome, setPacienteNome] = useState('')
-  const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
 
-  // Busca paciente por nome para vincular ao lançamento (opcional)
-  const [pacientes, setPacientes] = useState<{ id: string; nome: string }[]>([])
-  const [pacienteId, setPacienteId] = useState<string | null>(null)
-  const [buscandoPaciente, setBuscandoPaciente] = useState(false)
+  // Busca de paciente
+  const [pacienteNome, setPacienteNome]     = useState('')
+  const [pacienteId, setPacienteId]         = useState<string | null>(null)
+  const [sugestoes, setSugestoes]           = useState<{ id: string; nome: string }[]>([])
+  const [buscandoPac, setBuscandoPac]       = useState(false)
+
+  // Controle de fluxo
+  const [salvando, setSalvando]             = useState(false)
+  const [erro, setErro]                     = useState<string | null>(null)
+  const [mostrarModalAtend, setMostrarModalAtend] = useState(false)
+  const [lancamentoIdSalvo, setLancamentoIdSalvo] = useState<string | null>(null)
 
   async function buscarPaciente(nome: string) {
     setPacienteNome(nome)
     setPacienteId(null)
-    if (nome.length < 2) { setPacientes([]); return }
-    setBuscandoPaciente(true)
+    if (nome.length < 2) { setSugestoes([]); return }
+    setBuscandoPac(true)
     const { data } = await supabase
       .from('pacientes')
       .select('id, nome')
       .eq('clinica_id', clinicaId)
       .ilike('nome', `%${nome}%`)
-      .limit(5)
-    setPacientes((data ?? []) as { id: string; nome: string }[])
-    setBuscandoPaciente(false)
+      .limit(6)
+    setSugestoes((data ?? []) as { id: string; nome: string }[])
+    setBuscandoPac(false)
   }
 
   function selecionarPaciente(p: { id: string; nome: string }) {
     setPacienteId(p.id)
     setPacienteNome(p.nome)
-    setPacientes([])
+    setSugestoes([])
   }
+
+  function limparPaciente() {
+    setPacienteId(null)
+    setPacienteNome('')
+    setSugestoes([])
+  }
+
+  // ── Etapa 1: salvar pagamento ──────────────────────────────────────────────
 
   async function salvar() {
     const valorNum = parseFloat(valor)
-    if (!descricao.trim()) { setErro('Informe uma descrição'); return }
+    if (!descricao.trim())       { setErro('Informe uma descrição'); return }
     if (!valorNum || valorNum <= 0) { setErro('Informe um valor válido'); return }
-    if (!clinicaId) { setErro('Sessão expirada'); return }
+    if (!clinicaId)              { setErro('Sessão expirada'); return }
 
     setSalvando(true)
     setErro(null)
 
-    // Prefixo [key] sempre incluído para rastreio de comissão
     const descFinal = `[${dentistaKey}] ${descricao.trim()}`
 
-    // Criar lançamento
     const { data: lanc, error: lancErr } = await supabase
       .from('financeiro_lancamentos')
       .insert({
-        clinica_id: clinicaId,
+        clinica_id:  clinicaId,
         paciente_id: pacienteId ?? null,
-        tipo: 'receita',
-        descricao: descFinal,
+        tipo:        'receita',
+        descricao:   descFinal,
         valor_total: valorNum,
         num_parcelas: 1,
       })
@@ -89,33 +235,88 @@ export default function PagamentoAvulsoPage() {
       .single()
 
     if (lancErr || !lanc) {
-      setErro('Erro ao criar lançamento'); setSalvando(false); return
+      setErro('Erro ao criar lançamento')
+      setSalvando(false)
+      return
     }
 
-    // Criar parcela já como paga
+    const lancId = (lanc as { id: string }).id
+
     const { error: parErr } = await supabase
       .from('financeiro_parcelas')
       .insert({
-        lancamento_id: (lanc as { id: string }).id,
-        clinica_id: clinicaId,
-        numero: 1,
-        valor: valorNum,
-        valor_pago: valorNum,
+        lancamento_id:  lancId,
+        clinica_id:     clinicaId,
+        numero:         1,
+        valor:          valorNum,
+        valor_pago:     valorNum,
         data_vencimento: data,
         data_pagamento: data,
-        status: 'pago',
+        status:         'pago',
       })
 
     if (parErr) {
-      await supabase.from('financeiro_lancamentos').delete().eq('id', (lanc as { id: string }).id)
-      setErro('Erro ao registrar pagamento'); setSalvando(false); return
+      await supabase.from('financeiro_lancamentos').delete().eq('id', lancId)
+      setErro('Erro ao registrar pagamento')
+      setSalvando(false)
+      return
     }
 
+    setLancamentoIdSalvo(lancId)
+    setSalvando(false)
+
+    // Se tem paciente vinculado → pergunta sobre atendimento
+    if (pacienteId) {
+      setMostrarModalAtend(true)
+    } else {
+      router.push('/financeiro')
+    }
+  }
+
+  // ── Etapa 2a: criar atendimento e navegar ──────────────────────────────────
+
+  async function criarAtendimento(procedimentoId: string | null, observacoes: string) {
+    if (!pacienteId || !clinicaId) { router.push('/financeiro'); return }
+
+    // Buscar dentista_id pelo nome parcial
+    const nomeDentista = DENTISTAS.find(d => d.key === dentistaKey)?.nome ?? ''
+    const { data: dentistas } = await supabase
+      .from('usuarios')
+      .select('id, nome')
+      .eq('clinica_id', clinicaId)
+      .ilike('nome', `%${nomeDentista.replace(/^Dr[ªº]\s*/i, '').split(' ')[0]}%`)
+      .limit(1)
+
+    const dentistaId = (dentistas?.[0] as { id: string } | undefined)?.id ?? usuario?.id ?? null
+
+    await supabase.from('atendimentos').insert({
+      clinica_id:       clinicaId,
+      paciente_id:      pacienteId,
+      dentista_id:      dentistaId,
+      data_atendimento: data,
+      procedimento_id:  procedimentoId ?? null,
+      descricao:        observacoes || descricao.trim() || null,
+    })
+
+    router.push(`/pacientes/${pacienteId}`)
+  }
+
+  // ── Etapa 2b: pular atendimento ────────────────────────────────────────────
+
+  function pularAtendimento() {
+    setMostrarModalAtend(false)
     router.push('/financeiro')
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const valorNum = parseFloat(valor) || 0
+  const dentistaSel = DENTISTAS.find(d => d.key === dentistaKey)
+
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
+
+      {/* Header */}
       <div className="flex items-center gap-3 px-4 py-4 bg-white border-b border-gray-100">
         <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-gray-100">
           <ArrowLeft className="h-5 w-5 text-gray-600" />
@@ -126,8 +327,60 @@ export default function PagamentoAvulsoPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-5 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 pb-10">
         <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+
+          {/* Paciente */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Paciente <span className="text-gray-400 font-normal normal-case">(opcional — gera atendimento automaticamente)</span>
+            </label>
+            {pacienteId ? (
+              /* Paciente selecionado */
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0">
+                  {pacienteNome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <p className="flex-1 text-sm font-semibold text-emerald-800">{pacienteNome}</p>
+                <button onClick={limparPaciente} className="text-emerald-500 hover:text-emerald-700">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={pacienteNome}
+                  onChange={(e) => buscarPaciente(e.target.value)}
+                  placeholder="Digite o nome para buscar..."
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                {buscandoPac && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">buscando...</span>
+                )}
+                {sugestoes.length > 0 && (
+                  <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-20">
+                    {sugestoes.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => selecionarPaciente(p)}
+                        className="w-full text-left px-4 py-3 text-sm text-gray-800 hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                      >
+                        {p.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {pacienteId && (
+              <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1">
+                <ClipboardList className="h-3 w-3" />
+                Após salvar, você poderá registrar o atendimento no histórico
+              </p>
+            )}
+          </div>
 
           {/* Descrição */}
           <div>
@@ -156,7 +409,7 @@ export default function PagamentoAvulsoPage() {
                 min="0.01"
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3 text-base font-bold text-gray-900 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3 text-lg font-bold text-gray-900 focus:border-blue-500 focus:outline-none"
                 placeholder="0,00"
               />
             </div>
@@ -170,21 +423,28 @@ export default function PagamentoAvulsoPage() {
             <div className="grid grid-cols-2 gap-2">
               {DENTISTAS.map((d) => (
                 <button
-                  key={d.id}
+                  key={d.key}
                   type="button"
-                  onClick={() => setDentistaKey(d.id)}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-all ${
-                    dentistaKey === d.id
-                      ? 'border-blue-500 bg-blue-50 text-blue-800 font-semibold'
-                      : 'border-gray-200 bg-white text-gray-600'
+                  onClick={() => setDentistaKey(d.key)}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-3 transition-all ${
+                    dentistaKey === d.key
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 bg-white'
                   }`}
                 >
-                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                    dentistaKey === d.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    dentistaKey === d.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
                   }`}>
                     {d.initials}
                   </div>
-                  <span className="text-xs leading-tight text-left">{d.nome}</span>
+                  <span className={`text-xs leading-tight text-left ${
+                    dentistaKey === d.key ? 'font-semibold text-blue-800' : 'text-gray-600'
+                  }`}>
+                    {d.nome}
+                  </span>
+                  {dentistaKey === d.key && (
+                    <span className="ml-auto text-blue-500 text-sm">✓</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -227,60 +487,46 @@ export default function PagamentoAvulsoPage() {
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
             />
           </div>
-
-          {/* Paciente (opcional) */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Paciente <span className="text-gray-400 font-normal normal-case">(opcional)</span>
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={pacienteNome}
-                onChange={(e) => buscarPaciente(e.target.value)}
-                placeholder="Digite o nome para buscar..."
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-              />
-              {pacienteId && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 text-lg">✓</span>
-              )}
-            </div>
-
-            {/* Autocomplete */}
-            {pacientes.length > 0 && (
-              <div className="mt-1 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-10">
-                {pacientes.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => selecionarPaciente(p)}
-                    className="w-full text-left px-4 py-3 text-sm text-gray-800 hover:bg-blue-50 border-b border-gray-50 last:border-0"
-                  >
-                    {p.nome}
-                  </button>
-                ))}
-              </div>
-            )}
-            {buscandoPaciente && (
-              <p className="text-xs text-gray-400 mt-1">Buscando...</p>
-            )}
-          </div>
         </div>
+
+        {/* Preview */}
+        {valorNum > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-400">Resumo</p>
+              <p className="text-sm font-semibold text-gray-800 mt-0.5">
+                {descricao || '—'} · {dentistaSel?.initials}
+                {pacienteId ? ` · ${pacienteNome}` : ''}
+              </p>
+            </div>
+            <p className="text-lg font-bold text-emerald-600">{formatarMoeda(valorNum)}</p>
+          </div>
+        )}
 
         {erro && (
           <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{erro}</div>
         )}
 
-        <div className="pb-8">
-          <button
-            onClick={salvar}
-            disabled={salvando}
-            className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
-          >
-            {salvando ? 'Salvando...' : '✓ Registrar Pagamento'}
-          </button>
-        </div>
+        <button
+          onClick={salvar}
+          disabled={salvando}
+          className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
+        >
+          {salvando ? 'Salvando...' : '✓ Registrar Pagamento'}
+        </button>
       </div>
+
+      {/* Modal pós-pagamento */}
+      {mostrarModalAtend && pacienteId && (
+        <ModalAtendimento
+          pacienteNome={pacienteNome}
+          descricaoPagamento={descricao}
+          valor={parseFloat(valor) || 0}
+          dentistaNome={dentistaSel?.nome ?? ''}
+          onConfirmar={criarAtendimento}
+          onPular={pularAtendimento}
+        />
+      )}
     </div>
   )
 }
