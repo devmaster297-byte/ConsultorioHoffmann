@@ -66,6 +66,11 @@ interface ResumoFinanceiro {
 
 // ─── Configurações ────────────────────────────────────────────────────────────
 
+const DENTISTAS = [
+  { key: 'rosiele', nome: 'Drª Rosiele', initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { key: 'eduardo', nome: 'Drº Eduardo', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
+]
+
 const FORMAS = [
   { id: 'dinheiro',       label: 'Dinheiro',     emoji: '💵' },
   { id: 'pix',            label: 'PIX',           emoji: '📱' },
@@ -103,6 +108,7 @@ function ModalRegistrarPagamento({
   const [forma, setForma] = useState('pix')
   const [data, setData] = useState(hoje)
   const [observacao, setObservacao] = useState('')
+  const [dentistaKey, setDentistaKey] = useState<'rosiele' | 'eduardo'>('rosiele')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -121,16 +127,29 @@ function ModalRegistrarPagamento({
       .limit(1)
       .maybeSingle()
 
-    if (existente) return (existente as { id: string }).id
+    if (existente) {
+      const lancId = (existente as { id: string; descricao?: string } & Record<string, unknown>).id
+      // Atualizar descrição para incluir prefixo do dentista, se não tiver
+      const { data: lancAtual } = await supabase
+        .from('financeiro_lancamentos').select('descricao').eq('id', lancId).single()
+      const descAtual = (lancAtual as { descricao: string } | null)?.descricao ?? ''
+      if (!descAtual.includes(`[${dentistaKey}]`)) {
+        // Remove prefixo antigo de dentista se houver e adiciona o novo
+        const novaDesc = descAtual.replace(/\[[a-z]+\](?!\s*[a-f0-9])/, '').replace(/^(\[orc:[^\]]+\])/, `$1[${dentistaKey}]`)
+        await supabase.from('financeiro_lancamentos').update({ descricao: novaDesc }).eq('id', lancId)
+      }
+      return lancId
+    }
 
-    // Não existe — criar com a descrição contendo o prefixo do orçamento
+    // Não existe — criar com prefixo do orçamento + prefixo do dentista
+    const descricaoCompleta = `${ORC_PREFIX(orcamento.id)}[${dentistaKey}] ${orcamento.itens.map(i => i.procedimento_nome).join(', ')}`
     const { data: novoLanc, error } = await supabase
       .from('financeiro_lancamentos')
       .insert({
         clinica_id: clinicaId,
         paciente_id: pacienteId,
         tipo: 'receita',
-        descricao: DESCRICAO_LANCAMENTO(orcamento),
+        descricao: descricaoCompleta,
         valor_total: orcamento.valor_total,
         num_parcelas: 1,
       })
@@ -138,6 +157,7 @@ function ModalRegistrarPagamento({
       .single()
 
     if (error || !novoLanc) return null
+
     return (novoLanc as { id: string }).id
   }
 
@@ -221,6 +241,36 @@ function ModalRegistrarPagamento({
             >
               Usar total pendente ({formatarMoeda(valor_pendente)})
             </button>
+          </div>
+
+          {/* Dentista */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Dentista
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {DENTISTAS.map((d) => (
+                <button key={d.key} type="button" onClick={() => setDentistaKey(d.key as 'rosiele' | 'eduardo')}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${
+                    dentistaKey === d.key
+                      ? 'border-blue-500 bg-blue-50 font-semibold'
+                      : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    dentistaKey === d.key ? 'bg-blue-500 text-white' : d.cor.split(' ').slice(0,2).join(' ')
+                  }`}>
+                    {d.initials}
+                  </div>
+                  <span className={`text-xs ${dentistaKey === d.key ? 'text-blue-800' : 'text-gray-600'}`}>
+                    {d.nome}
+                  </span>
+                  {dentistaKey === d.key && (
+                    <span className="ml-auto text-blue-500 text-sm">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Forma de pagamento */}

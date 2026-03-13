@@ -3,68 +3,76 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useProcedimentos } from '@/lib/hooks/useProcedimentos'
 
-const schema = z.object({
-  data_atendimento: z.string().min(1, 'Data obrigatória'),
-  procedimento_id: z.string().optional(),
-  descricao: z.string().optional(),
-})
-
-type FormData = z.infer<typeof schema>
+interface Dentista {
+  id: string
+  nome: string
+}
 
 export default function EditarAtendimentoPage() {
   const { id: pacienteId, atendimentoId } = useParams<{ id: string; atendimentoId: string }>()
   const router = useRouter()
   const { clinicaId } = useAuthStore()
   const { procedimentos } = useProcedimentos(clinicaId ?? '')
+
   const [salvando, setSalvando] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
+  const [dentistas, setDentistas] = useState<Dentista[]>([])
 
   const hoje = new Date().toISOString().split('T')[0]
-
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  })
+  const [data, setData] = useState('')
+  const [procedimentoId, setProcedimentoId] = useState('')
+  const [dentistaId, setDentistaId] = useState('')
+  const [descricao, setDescricao] = useState('')
 
   useEffect(() => {
-    if (!atendimentoId) return
-    async function carregar() {
-      const { data } = await supabase
-        .from('atendimentos')
-        .select('data_atendimento, procedimento_id, descricao')
-        .eq('id', atendimentoId)
-        .single()
+    if (!clinicaId || !atendimentoId) return
 
-      if (data) {
-        reset({
-          data_atendimento: data.data_atendimento,
-          procedimento_id: data.procedimento_id ?? '',
-          descricao: data.descricao ?? '',
-        })
-      }
-      setCarregando(false)
-    }
-    carregar()
-  }, [atendimentoId, reset])
+    // Buscar dentistas
+    supabase
+      .from('usuarios')
+      .select('id, nome')
+      .eq('clinica_id', clinicaId)
+      .eq('ativo', true)
+      .in('perfil', ['dentista', 'admin'])
+      .order('nome')
+      .then(({ data }) => setDentistas((data ?? []) as Dentista[]))
 
-  async function onSubmit(data: FormData) {
+    // Carregar atendimento atual
+    supabase
+      .from('atendimentos')
+      .select('data_atendimento, procedimento_id, dentista_id, descricao')
+      .eq('id', atendimentoId)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setData(data.data_atendimento ?? '')
+          setProcedimentoId(data.procedimento_id ?? '')
+          setDentistaId(data.dentista_id ?? '')
+          setDescricao(data.descricao ?? '')
+        }
+        setCarregando(false)
+      })
+  }, [clinicaId, atendimentoId])
+
+  async function salvar() {
+    if (!data) { setErro('Informe a data'); return }
+    if (!dentistaId) { setErro('Selecione o dentista'); return }
     setSalvando(true)
     setErro(null)
 
     const { error } = await supabase
       .from('atendimentos')
       .update({
-        data_atendimento: data.data_atendimento,
-        procedimento_id: data.procedimento_id || null,
-        descricao: data.descricao || null,
+        data_atendimento: data,
+        procedimento_id: procedimentoId || null,
+        dentista_id: dentistaId || null,
+        descricao: descricao || null,
       })
       .eq('id', atendimentoId)
 
@@ -94,23 +102,48 @@ export default function EditarAtendimentoPage() {
         <h1 className="font-semibold text-gray-900">Editar Atendimento</h1>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex-1 px-4 py-6">
-        <div className="space-y-4 bg-white rounded-2xl p-4 shadow-sm">
+      <div className="flex-1 px-4 py-6 space-y-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
 
           {/* Data */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Data do atendimento
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
             <input
-              {...register('data_atendimento')}
-              type="date"
-              max={hoje}
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              type="date" value={data} max={hoje}
+              onChange={(e) => setData(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
             />
-            {errors.data_atendimento && (
-              <p className="mt-1 text-xs text-red-500">{errors.data_atendimento.message}</p>
-            )}
+          </div>
+
+          {/* Dentista */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Dentista <span className="text-red-400">*</span>
+            </label>
+            <div className="flex flex-col gap-2">
+              {dentistas.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setDentistaId(d.id)}
+                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-all ${
+                    dentistaId === d.id
+                      ? 'border-blue-500 bg-blue-50 text-blue-800 font-semibold'
+                      : 'border-gray-200 bg-white text-gray-700'
+                  }`}
+                >
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    dentistaId === d.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {d.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                  <span className="flex-1 text-left">{d.nome}</span>
+                  {dentistaId === d.id && (
+                    <span className="text-blue-500 text-lg leading-none">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Procedimento */}
@@ -118,7 +151,8 @@ export default function EditarAtendimentoPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Procedimento</label>
             <div className="relative">
               <select
-                {...register('procedimento_id')}
+                value={procedimentoId}
+                onChange={(e) => setProcedimentoId(e.target.value)}
                 className="w-full appearance-none rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none bg-white"
               >
                 <option value="">Nenhum</option>
@@ -134,28 +168,29 @@ export default function EditarAtendimentoPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
             <textarea
-              {...register('descricao')}
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
               rows={5}
               placeholder="Dente 16, anestesia aplicada, próxima consulta..."
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none resize-none"
             />
           </div>
         </div>
 
         {erro && (
-          <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{erro}</div>
+          <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{erro}</div>
         )}
 
-        <div className="mt-6 pb-6">
+        <div className="pb-6">
           <button
-            type="submit"
-            disabled={salvando}
-            className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60 active:bg-blue-700 transition-colors"
+            onClick={salvar}
+            disabled={salvando || !dentistaId}
+            className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60 active:bg-blue-700"
           >
             {salvando ? 'Salvando...' : 'Salvar Alterações'}
           </button>
         </div>
-      </form>
+      </div>
     </div>
   )
 }

@@ -4,15 +4,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, TrendingUp, Wallet, CircleDollarSign } from 'lucide-react'
+import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, TrendingUp, Percent, Zap } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useFinanceiro, baixarParcela } from '@/lib/hooks/useFinanceiro'
+import { useComissaoStore } from '@/store/comissao.store'
 import { FinanceiroPainel } from '@/components/financeiro/FinanceiroPainel'
 import { ParcelaItem } from '@/components/financeiro/ParcelaItem'
 import { formatarMoeda, formatarData, iniciais } from '@/lib/utils'
 
-type Aba = 'visao_geral' | 'recebimentos' | 'orcamentos'
+type Aba = 'visao_geral' | 'recebimentos' | 'orcamentos' | 'comissao'
+
+// Dentistas fixos — identificados pelo prefixo [key] gravado na descrição dos avulsos
+const DENTISTAS_CLINICA = [
+  { key: 'rosiele', nome: 'Drª Rosiele Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700' },
+  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC', cor: 'bg-blue-100 text-blue-700'     },
+]
 
 const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -242,6 +249,107 @@ function useOrcamentosFinanceiro(clinicaId: string) {
   return { orcamentos, carregando, recarregar: carregar }
 }
 
+// ── Hook comissão por dentista ───────────────────────────────────────────────
+
+interface RecebimentoPorDentista {
+  dentistaKey: string
+  dentistaNome: string
+  totalRecebido: number
+  numPagamentos: number
+  pagamentos: Array<{
+    id: string
+    descricao: string
+    paciente_nome: string | null
+    valor: number
+    data: string
+  }>
+}
+
+function useComissaoDentista(clinicaId: string, mes: string) {
+  const [porDentista, setPorDentista] = useState<RecebimentoPorDentista[]>([])
+  const [carregando, setCarregando] = useState(true)
+
+  const carregar = useCallback(async () => {
+    if (!clinicaId) return
+    setCarregando(true)
+
+    const [ano, mesNum] = mes.split('-').map(Number)
+    const inicio = `${mes}-01`
+    const fim    = new Date(ano, mesNum, 0).toISOString().split('T')[0]
+
+    // Buscar parcelas pagas do mês
+    const { data: parcelasRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('id, lancamento_id, valor_pago, valor, data_pagamento')
+      .eq('clinica_id', clinicaId)
+      .eq('status', 'pago')
+      .gte('data_pagamento', inicio)
+      .lte('data_pagamento', fim)
+
+    if (!parcelasRaw?.length) {
+      setPorDentista(DENTISTAS_CLINICA.map(d => ({ dentistaKey: d.key, dentistaNome: d.nome, totalRecebido: 0, numPagamentos: 0, pagamentos: [] })))
+      setCarregando(false)
+      return
+    }
+
+    const parcelas = parcelasRaw as Array<{ id: string; lancamento_id: string; valor_pago: number | null; valor: number; data_pagamento: string }>
+    const lancIds = [...new Set(parcelas.map(p => p.lancamento_id))]
+
+    const { data: lancsRaw } = await supabase
+      .from('financeiro_lancamentos')
+      .select('id, descricao, paciente_id, tipo')
+      .in('id', lancIds)
+
+    const lancs = (lancsRaw ?? []) as Array<{ id: string; descricao: string; paciente_id: string | null; tipo: string }>
+    const lancMap: Record<string, typeof lancs[number]> = Object.fromEntries(lancs.map(l => [l.id, l]))
+
+    // Buscar nomes dos pacientes
+    const pacIds = [...new Set(lancs.map(l => l.paciente_id).filter((id): id is string => id !== null))]
+    const pacMap: Record<string, string> = {}
+    if (pacIds.length > 0) {
+      const { data: pacs } = await supabase.from('pacientes').select('id, nome').in('id', pacIds)
+      ;(pacs ?? []).forEach((p: { id: string; nome: string }) => { pacMap[p.id] = p.nome })
+    }
+
+    // Separar por dentista pelo prefixo [key] na descrição
+    const grupos: Record<string, RecebimentoPorDentista> = {}
+    DENTISTAS_CLINICA.forEach(d => {
+      grupos[d.key] = { dentistaKey: d.key, dentistaNome: d.nome, totalRecebido: 0, numPagamentos: 0, pagamentos: [] }
+    })
+
+    for (const p of parcelas) {
+      const lanc = lancMap[p.lancamento_id]
+      if (!lanc || lanc.tipo !== 'receita') continue
+
+      // Identificar dentista pelo tag [key] em qualquer posição da descrição
+      // Formato avulso:    [eduardo] Manutenção
+      // Formato orçamento: [orc:UUID][eduardo] Proc1, Proc2
+      let dentistaKey = 'rosiele' // padrão
+      const allTags = [...lanc.descricao.matchAll(/\[([a-z]+)\]/g)]
+      for (const m of allTags) {
+        if (grupos[m[1]]) { dentistaKey = m[1]; break }
+      }
+
+      const valor = p.valor_pago ?? p.valor
+      grupos[dentistaKey].totalRecebido += valor
+      grupos[dentistaKey].numPagamentos += 1
+      grupos[dentistaKey].pagamentos.push({
+        id: p.id,
+        descricao: lanc.descricao.replace(/\[orc:[a-f0-9-]{36}\]/g, '').replace(/\[[a-z]+\]/g, '').trim(),
+        paciente_nome: lanc.paciente_id ? (pacMap[lanc.paciente_id] ?? null) : null,
+        valor,
+        data: p.data_pagamento,
+      })
+    }
+
+    setPorDentista(Object.values(grupos))
+    setCarregando(false)
+  }, [clinicaId, mes])
+
+  useEffect(() => { carregar() }, [carregar])
+  return { porDentista, carregando, recarregar: carregar }
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function FinanceiroPage() {
@@ -250,10 +358,13 @@ export default function FinanceiroPage() {
   const [aba, setAba] = useState<Aba>('visao_geral')
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
   const [filtroOrc, setFiltroOrc] = useState<'todos' | 'pendente' | 'aprovado'>('todos')
+  const [mesCom, setMesCom] = useState(new Date().toISOString().slice(0, 7))
 
   const { metricas, proximosVencimentos, carregando, recarregar } = useFinanceiro(clinicaId ?? '', mes)
   const { recebimentos, total: totalRecebido, carregando: carregandoRec } = useRecebimentos(clinicaId ?? '', mes)
   const { orcamentos, carregando: carregandoOrc } = useOrcamentosFinanceiro(clinicaId ?? '')
+  const { percentualComissao } = useComissaoStore()
+  const { porDentista, carregando: carregandoCom } = useComissaoDentista(clinicaId ?? '', mesCom)
 
   function navMes(dir: -1 | 1) {
     const [ano, m] = mes.split('-').map(Number)
@@ -268,9 +379,10 @@ export default function FinanceiroPage() {
   }
 
   const abas: { id: Aba; label: string }[] = [
-    { id: 'visao_geral',  label: 'Visão Geral'  },
-    { id: 'recebimentos', label: 'Recebimentos' },
-    { id: 'orcamentos',   label: 'Orçamentos'   },
+    { id: 'visao_geral',  label: 'Geral'       },
+    { id: 'recebimentos', label: 'Recebidos'   },
+    { id: 'orcamentos',   label: 'Orçamentos'  },
+    { id: 'comissao',     label: 'Comissão'    },
   ]
 
   // ── Métricas dos orçamentos ────────────────────────────────────────────────
@@ -291,12 +403,20 @@ export default function FinanceiroPage() {
       <div className="sticky top-0 z-10 bg-gray-50 px-4 pt-4 pb-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-gray-900">Financeiro</h1>
-          <Link
-            href="/financeiro/lancamento"
-            className="flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white active:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" /> Lançar
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/financeiro/avulso"
+              className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white active:bg-emerald-700"
+            >
+              <Zap className="h-4 w-4" /> Avulso
+            </Link>
+            <Link
+              href="/financeiro/lancamento"
+              className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-2 text-sm font-medium text-white active:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" /> Lançar
+            </Link>
+          </div>
         </div>
         <div className="flex border-b border-gray-200">
           {abas.map((a) => (
@@ -663,6 +783,147 @@ export default function FinanceiroPage() {
                     </button>
                   )
                 })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Comissão ── */}
+        {aba === 'comissao' && (
+          <>
+            {/* Seletor de mês */}
+            <div className="flex items-center justify-between">
+              <button onClick={() => {
+                const [ano, m] = mesCom.split('-').map(Number)
+                const d = new Date(ano, m - 2)
+                setMesCom(d.toISOString().slice(0, 7))
+              }} className="p-2 rounded-xl active:bg-gray-100">
+                <ChevronLeft className="h-5 w-5 text-gray-500" />
+              </button>
+              <span className="text-sm font-semibold text-gray-700">{nomeMes(mesCom)}</span>
+              <button
+                onClick={() => {
+                  const [ano, m] = mesCom.split('-').map(Number)
+                  const novo = new Date(ano, m).toISOString().slice(0, 7)
+                  if (novo <= new Date().toISOString().slice(0, 7)) setMesCom(novo)
+                }}
+                disabled={mesCom >= new Date().toISOString().slice(0, 7)}
+                className="p-2 rounded-xl active:bg-gray-100 disabled:opacity-30"
+              >
+                <ChevronRight className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Card de comissão configurada */}
+            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Percent className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-emerald-800">Comissão configurada</p>
+                  <p className="text-xs text-emerald-600">{percentualComissao}% sobre Dr. Eduardo · <Link href="/configuracoes/comissao" className="underline">Alterar</Link></p>
+                </div>
+              </div>
+            </div>
+
+            {carregandoCom ? (
+              <div className="space-y-3">
+                {[...Array(2)].map((_, i) => (
+                  <div key={i} className="h-40 rounded-2xl bg-gray-100 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {porDentista.map((d) => {
+                  const isEduardo = d.dentistaKey === 'eduardo'
+                  const comissao = isEduardo ? (d.totalRecebido * percentualComissao / 100) : 0
+                  const dentInfo = DENTISTAS_CLINICA.find(x => x.key === d.dentistaKey)
+
+                  return (
+                    <div key={d.dentistaKey} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                      {/* Header */}
+                      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${dentInfo?.cor ?? 'bg-gray-100 text-gray-600'}`}>
+                          {dentInfo?.initials}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-900 text-sm">{d.dentistaNome}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{d.numPagamentos} pagamento{d.numPagamentos !== 1 ? 's' : ''} em {nomeMes(mesCom)}</p>
+                        </div>
+                      </div>
+
+                      {/* Métricas */}
+                      <div className={`grid divide-x divide-gray-100 border-t border-gray-100 ${isEduardo ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                        <div className="px-3 py-3 text-center">
+                          <p className="text-xs text-gray-400">Recebido</p>
+                          <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(d.totalRecebido)}</p>
+                        </div>
+                        {isEduardo && (
+                          <div className="px-3 py-3 text-center bg-emerald-50">
+                            <p className="text-xs text-emerald-600">Comissão ({percentualComissao}%)</p>
+                            <p className="text-sm font-bold text-emerald-700 mt-0.5">{formatarMoeda(comissao)}</p>
+                          </div>
+                        )}
+                        <div className="px-3 py-3 text-center">
+                          <p className="text-xs text-gray-400">{isEduardo ? 'Líquido' : 'Líquido'}</p>
+                          <p className="text-sm font-bold text-blue-700 mt-0.5">{formatarMoeda(d.totalRecebido - comissao)}</p>
+                        </div>
+                      </div>
+
+                      {/* Lista de pagamentos */}
+                      {d.pagamentos.length > 0 && (
+                        <div className="border-t border-gray-50">
+                          {d.pagamentos.slice(0, 5).map((p, i) => (
+                            <div key={p.id} className={`flex items-center justify-between px-4 py-2.5 ${i < d.pagamentos.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-800 truncate">
+                                  {p.paciente_nome ?? p.descricao}
+                                </p>
+                                {p.paciente_nome && (
+                                  <p className="text-xs text-gray-400 truncate">{p.descricao}</p>
+                                )}
+                                <p className="text-xs text-gray-300">{formatarData(p.data)}</p>
+                              </div>
+                              <div className="flex-shrink-0 ml-3 text-right">
+                                <p className="text-xs font-bold text-gray-700">{formatarMoeda(p.valor)}</p>
+                                {isEduardo && (
+                                  <p className="text-xs text-emerald-600">{formatarMoeda(p.valor * percentualComissao / 100)}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {d.pagamentos.length > 5 && (
+                            <div className="px-4 py-2 text-center">
+                              <p className="text-xs text-gray-400">+{d.pagamentos.length - 5} pagamentos</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {d.pagamentos.length === 0 && (
+                        <div className="px-4 py-4 text-center border-t border-gray-50">
+                          <p className="text-xs text-gray-400">Nenhum pagamento em {nomeMes(mesCom)}</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Resumo total de comissão */}
+                {porDentista.some(d => d.dentistaKey === 'eduardo' && d.totalRecebido > 0) && (
+                  <div className="bg-emerald-600 rounded-2xl px-4 py-4">
+                    <p className="text-xs text-emerald-200 font-medium">Total comissão da secretária em {nomeMes(mesCom)}</p>
+                    <p className="text-2xl font-bold text-white mt-1">
+                      {formatarMoeda(
+                        (porDentista.find(d => d.dentistaKey === 'eduardo')?.totalRecebido ?? 0) * percentualComissao / 100
+                      )}
+                    </p>
+                    <p className="text-xs text-emerald-300 mt-1">
+                      {percentualComissao}% de {formatarMoeda(porDentista.find(d => d.dentistaKey === 'eduardo')?.totalRecebido ?? 0)}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </>
