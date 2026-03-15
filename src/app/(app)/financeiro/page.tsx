@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, TrendingUp, Percent, Zap } from 'lucide-react'
+import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, TrendingUp, Percent, Zap, FileSpreadsheet } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useFinanceiro, baixarParcela } from '@/lib/hooks/useFinanceiro'
@@ -404,6 +404,13 @@ export default function FinanceiroPage() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-gray-900">Financeiro</h1>
           <div className="flex items-center gap-2">
+            <Link
+              href="/financeiro/exportar"
+              className="p-2 rounded-full bg-gray-100 text-gray-600 active:bg-gray-200"
+              title="Exportar planilha"
+            >
+              <FileSpreadsheet className="h-5 w-5" />
+            </Link>
             <Link
               href="/financeiro/avulso"
               className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white active:bg-emerald-700"
