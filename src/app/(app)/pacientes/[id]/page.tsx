@@ -18,7 +18,8 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { AtendimentoItem } from '@/components/pacientes/AtendimentoItem'
 import { FinanceiroAba } from './financeiro/FinanceiroAba'
 import { RadiografiasAba } from './radiografias/RadiografiasAba'
-import { iniciais, formatarTelefone } from '@/lib/utils'
+import { iniciais, formatarTelefone, formatarMoeda } from '@/lib/utils'
+import { useResumoFinanceiroPaciente } from '@/lib/hooks/useResumoFinanceiroPaciente'
 
 type Aba = 'historico' | 'financeiro' | 'radiografias'
 
@@ -70,6 +71,7 @@ export default function FichaPacientePage() {
   useEffect(() => { carregarPaciente() }, [carregarPaciente])
 
   const { atendimentos, carregando: carregandoAtend } = useAtendimentos(id ?? '', clinicaId ?? '')
+  const resumoFin = useResumoFinanceiroPaciente(id ?? '', clinicaId ?? '')
 
   if (erroCarregar) {
     return (
@@ -132,10 +134,20 @@ export default function FichaPacientePage() {
             )}
           </div>
 
-          {/* Contagem de consultas */}
-          <div className="flex-shrink-0 text-right border-l border-gray-100 pl-4">
-            <p className="text-xl font-bold text-gray-900 leading-none">{atendimentos.length}</p>
-            <p className="text-xs text-gray-400 mt-0.5">consultas</p>
+          {/* Resumo financeiro compacto */}
+          <div className="flex-shrink-0 border-l border-gray-100 pl-4 space-y-1.5 text-right">
+            <div>
+              <p className="text-lg font-bold text-gray-900 leading-none">{atendimentos.length}</p>
+              <p className="text-[10px] text-gray-400">consultas</p>
+            </div>
+            {!resumoFin.carregando && resumoFin.totalContratado > 0 && (
+              <div>
+                <p className={`text-sm font-bold leading-none ${resumoFin.saldoDevedor > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                  {resumoFin.saldoDevedor > 0 ? formatarMoeda(resumoFin.saldoDevedor) : '✓ Quitado'}
+                </p>
+                <p className="text-[10px] text-gray-400">{resumoFin.saldoDevedor > 0 ? 'em aberto' : ''}</p>
+              </div>
+            )}
           </div>
         </div>
 

@@ -3,16 +3,18 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Plus, UserX } from 'lucide-react'
+import { Search, Plus, UserX, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { Paciente } from '@/lib/supabase/types'
 import { StatusFinanceiro, calcularStatusEmBatch } from '@/lib/hooks/usePacienteStatus'
 import { PacienteCard } from '@/components/pacientes/PacienteCard'
 import { useAuthStore } from '@/store/auth.store'
+import { useVencidosCount } from '@/lib/hooks/useVencidosCount'
 import { debounce } from '@/lib/utils'
 
 export default function PacientesPage() {
   const { clinicaId } = useAuthStore()
+  const vencidosCount = useVencidosCount(clinicaId)
   const [busca, setBusca] = useState('')
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [statusMap, setStatusMap] = useState<Record<string, StatusFinanceiro>>({})
