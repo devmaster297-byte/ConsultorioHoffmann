@@ -9,25 +9,25 @@ import { formatarMoeda } from '@/lib/utils'
 
 export default function ComissaoPage() {
   const router = useRouter()
-  const { percentualRosiele, percentualPatricia, setPercentualRosiele, setPercentualPatricia } = useComissaoStore()
+  const { percentualRosieli, percentualPatricia, setPercentualRosieli, setPercentualPatricia } = useComissaoStore()
 
-  const [pRosiele,  setPRosiele]  = useState(percentualRosiele.toString())
+  const [pRosieli,  setPRosiele]  = useState(percentualRosieli.toString())
   const [pPatricia, setPPatricia] = useState(percentualPatricia.toString())
   const [salvo, setSalvo] = useState(false)
 
   function salvar() {
-    const r = parseFloat(pRosiele)
+    const r = parseFloat(pRosieli)
     const p = parseFloat(pPatricia)
     if (isNaN(r) || r < 0 || r > 100) return
     if (isNaN(p) || p < 0 || p > 100) return
     if (r + p > 100) return
-    setPercentualRosiele(r)
+    setPercentualRosieli(r)
     setPercentualPatricia(p)
     setSalvo(true)
     setTimeout(() => setSalvo(false), 2000)
   }
 
-  const r = parseFloat(pRosiele)  || 0
+  const r = parseFloat(pRosieli)  || 0
   const p = parseFloat(pPatricia) || 0
   const eduardo = Math.max(0, 100 - r - p)
   const exemplos = [500, 1000, 2000, 5000]
@@ -51,7 +51,7 @@ export default function ComissaoPage() {
           </div>
           <p className="text-xs text-blue-700 leading-relaxed">
             Sobre tudo que o <strong>Dr. Eduardo</strong> recebe: <strong>{r}%</strong> vai para a
-            <strong> Drª Rosiele</strong> (uso do espaço) e <strong>{p}%</strong> vai para
+            <strong> Drª Rosieli</strong> (uso do espaço) e <strong>{p}%</strong> vai para
             <strong> Patricia</strong> (comissão). Eduardo fica com os <strong>{eduardo.toFixed(1)}%</strong> restantes.
           </p>
         </div>
@@ -62,12 +62,12 @@ export default function ComissaoPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Distribuição do bruto do Dr. Eduardo</p>
             <div className="flex h-4 rounded-full overflow-hidden gap-0.5">
               <div className="bg-blue-500 transition-all" style={{ width: `${eduardo}%` }} title={`Eduardo ${eduardo.toFixed(0)}%`} />
-              <div className="bg-purple-500 transition-all" style={{ width: `${r}%` }} title={`Rosiele ${r}%`} />
+              <div className="bg-purple-500 transition-all" style={{ width: `${r}%` }} title={`Rosieli ${r}%`} />
               <div className="bg-emerald-500 transition-all" style={{ width: `${p}%` }} title={`Patricia ${p}%`} />
             </div>
             <div className="flex gap-4 text-xs">
               <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-500 inline-block" /> Eduardo {eduardo.toFixed(0)}%</span>
-              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-purple-500 inline-block" /> Rosiele {r}%</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-purple-500 inline-block" /> Rosieli {r}%</span>
               <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block" /> Patricia {p}%</span>
             </div>
           </div>
@@ -77,16 +77,16 @@ export default function ComissaoPage() {
         <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Percentuais sobre o bruto do Dr. Eduardo</p>
 
-          {/* Rosiele */}
+          {/* Rosieli */}
           <div>
             <div className="flex items-center gap-2 mb-1">
               <div className="h-6 w-6 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700">RH</div>
-              <label className="text-sm font-medium text-gray-700">Drª Rosiele Hoffmann</label>
+              <label className="text-sm font-medium text-gray-700">Drª Rosieli Hoffmann</label>
             </div>
             <div className="relative">
               <input
                 type="number" min="0" max="100" step="0.5"
-                value={pRosiele}
+                value={pRosieli}
                 onChange={(e) => setPRosiele(e.target.value)}
                 className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-lg font-bold text-gray-900 focus:border-purple-500 focus:outline-none"
               />
@@ -124,7 +124,7 @@ export default function ComissaoPage() {
               <div className="grid grid-cols-4 pb-2">
                 <p className="text-xs text-gray-400 font-medium">Dr. Eduardo</p>
                 <p className="text-xs text-blue-600 font-medium text-right">Eduardo</p>
-                <p className="text-xs text-purple-600 font-medium text-right">Rosiele</p>
+                <p className="text-xs text-purple-600 font-medium text-right">Rosieli</p>
                 <p className="text-xs text-emerald-600 font-medium text-right">Patricia</p>
               </div>
               {exemplos.map(ex => {

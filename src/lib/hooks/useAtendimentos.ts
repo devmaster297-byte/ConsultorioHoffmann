@@ -2,6 +2,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase-browser'
 
+const DENTISTAS_EXTERNOS: Record<string, string> = {
+  eduardo: 'Drº Eduardo Cortelleti',
+  pamela:  'Drª Pamela Bolsoni',
+}
+
 export interface AtendimentoDetalhado {
   id: string
   paciente_id: string
@@ -86,8 +91,14 @@ export function useAtendimentos(pacienteId: string, clinicaId: string) {
       data_atendimento: a.data_atendimento,
       procedimento_id: a.procedimento_id,
       procedimento_nome: (a.procedimento as unknown as { nome: string } | null)?.nome ?? null,
-      descricao: a.descricao,
-      dentista_nome: a.dentista_id ? (dentistaMap[a.dentista_id] ?? null) : null,
+      descricao: (a.descricao ?? '').replace(/^\[[a-z]+\]\s*/, '') || null,
+      dentista_nome: (() => {
+        if (a.dentista_id) return dentistaMap[a.dentista_id] ?? null
+        // Dentista externo identificado pelo prefixo [key] na descrição
+        const m = (a.descricao ?? '').match(/^\[([a-z]+)\]/)
+        if (m && DENTISTAS_EXTERNOS[m[1]]) return DENTISTAS_EXTERNOS[m[1]]
+        return null
+      })(),
       total_radiografias: rxPorAtend[a.id] ?? 0,
     }))
 

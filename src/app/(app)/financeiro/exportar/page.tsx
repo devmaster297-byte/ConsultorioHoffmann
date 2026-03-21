@@ -69,7 +69,7 @@ export default function ExportarPage() {
           </div>
           <p className="text-sm font-semibold text-gray-800">Planilha Excel mensal</p>
           <p className="text-xs text-gray-400 mt-1 text-center max-w-xs">
-            Gera arquivo .xlsx com duas abas: uma para a Drª Rosiele e outra para o Dr. Eduardo,
+            Gera arquivo .xlsx com duas abas: uma para a Drª Rosieli e outra para o Dr. Eduardo,
             no mesmo formato do histórico da clínica.
           </p>
         </div>
@@ -129,7 +129,7 @@ export default function ExportarPage() {
           <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-50 border border-purple-100">
             <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700">RH</div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Aba: Drª Rosiele</p>
+              <p className="text-sm font-semibold text-gray-900">Aba: Drª Rosieli</p>
               <p className="text-xs text-gray-400">Todos os pacientes com lançamentos atribuídos a ela</p>
             </div>
           </div>

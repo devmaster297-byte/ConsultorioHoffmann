@@ -199,7 +199,7 @@ async function buscarDados(clinicaId: string, mes: string): Promise<{
     if (dentista === 'eduardo') {
       eduardo.push(linha)
     } else {
-      // Rosiele = rosiele explícito OU sem prefixo (padrão)
+      // Rosieli = rosieli explícito OU sem prefixo (padrão)
       rosiele.push(linha)
     }
   }
@@ -295,15 +295,15 @@ export async function exportarMensal(clinicaId: string, mes: string): Promise<vo
 
   const wb = XLSX.utils.book_new()
 
-  // Aba Drª Rosiele
-  const wsRosiele = XLSX.utils.aoa_to_sheet([])
+  // Aba Drª Rosieli
+  const wsRosieli = XLSX.utils.aoa_to_sheet([])
   construirAba(
-    wsRosiele,
-    `Acompanhamento Pacientes ${tituloMes} — Drª Rosiele Hoffmann`,
+    wsRosieli,
+    `Acompanhamento Pacientes ${tituloMes} — Drª Rosieli Hoffmann`,
     rosiele,
-    'Rosiele'
+    'Rosieli'
   )
-  XLSX.utils.book_append_sheet(wb, wsRosiele, 'Drª Rosiele')
+  XLSX.utils.book_append_sheet(wb, wsRosieli, 'Drª Rosieli')
 
   // Aba Dr. Eduardo
   const wsEduardo = XLSX.utils.aoa_to_sheet([])

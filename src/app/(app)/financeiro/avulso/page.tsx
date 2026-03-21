@@ -11,8 +11,9 @@ import { formatarMoeda } from '@/lib/utils'
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const DENTISTAS = [
-  { key: 'rosiele', nome: 'Drª Rosiele Hoffmann',  initials: 'RH' },
-  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC' },
+  { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
+  { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700 border-rose-200'      },
 ]
 
 const FORMAS = [
@@ -278,16 +279,14 @@ export default function PagamentoAvulsoPage() {
   async function criarAtendimento(procedimentoId: string | null, observacoes: string) {
     if (!pacienteId || !clinicaId) { router.push('/financeiro'); return }
 
-    // Buscar dentista_id pelo nome parcial
-    const nomeDentista = DENTISTAS.find(d => d.key === dentistaKey)?.nome ?? ''
-    const { data: dentistas } = await supabase
-      .from('usuarios')
-      .select('id, nome')
-      .eq('clinica_id', clinicaId)
-      .ilike('nome', `%${nomeDentista.replace(/^Dr[ªº]\s*/i, '').split(' ')[0]}%`)
-      .limit(1)
-
-    const dentistaId = (dentistas?.[0] as { id: string } | undefined)?.id ?? usuario?.id ?? null
+    // Rosieli está no banco de usuarios; Eduardo e Pamela são externos (null)
+    let dentistaId: string | null = null
+    if (dentistaKey === 'rosieli' && clinicaId) {
+      const { data: dr } = await supabase
+        .from('usuarios').select('id').eq('clinica_id', clinicaId)
+        .ilike('nome', '%Rosieli%').limit(1).single()
+      dentistaId = (dr as { id: string } | null)?.id ?? null
+    }
 
     await supabase.from('atendimentos').insert({
       clinica_id:       clinicaId,

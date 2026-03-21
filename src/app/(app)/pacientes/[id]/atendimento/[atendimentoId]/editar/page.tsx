@@ -8,10 +8,11 @@ import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useProcedimentos } from '@/lib/hooks/useProcedimentos'
 
-interface Dentista {
-  id: string
-  nome: string
-}
+const DENTISTAS_FIXOS = [
+  { id: 'rosieli', nome: 'Drª Rosieli Hoffmann'   },
+  { id: 'eduardo', nome: 'Drº Eduardo Cortelleti' },
+  { id: 'pamela',  nome: 'Drª Pamela Bolsoni'     },
+]
 
 export default function EditarAtendimentoPage() {
   const { id: pacienteId, atendimentoId } = useParams<{ id: string; atendimentoId: string }>()
@@ -19,10 +20,10 @@ export default function EditarAtendimentoPage() {
   const { clinicaId } = useAuthStore()
   const { procedimentos } = useProcedimentos(clinicaId ?? '')
 
+  const dentistas = DENTISTAS_FIXOS
   const [salvando, setSalvando] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
-  const [dentistas, setDentistas] = useState<Dentista[]>([])
 
   const hoje = new Date().toISOString().split('T')[0]
   const [data, setData] = useState('')
@@ -32,16 +33,6 @@ export default function EditarAtendimentoPage() {
 
   useEffect(() => {
     if (!clinicaId || !atendimentoId) return
-
-    // Buscar dentistas
-    supabase
-      .from('usuarios')
-      .select('id, nome')
-      .eq('clinica_id', clinicaId)
-      .eq('ativo', true)
-      .in('perfil', ['dentista', 'admin'])
-      .order('nome')
-      .then(({ data }) => setDentistas((data ?? []) as Dentista[]))
 
     // Carregar atendimento atual
     supabase
@@ -53,8 +44,19 @@ export default function EditarAtendimentoPage() {
         if (data) {
           setData(data.data_atendimento ?? '')
           setProcedimentoId(data.procedimento_id ?? '')
-          setDentistaId(data.dentista_id ?? '')
-          setDescricao(data.descricao ?? '')
+          // Detectar dentista: se dentista_id existe é Rosieli, senão checar prefixo na descricao
+          const desc = data.descricao ?? ''
+          const prefMatch = desc.match(/^\[([a-z]+)\]/)
+          if (prefMatch && DENTISTAS_FIXOS.some(d => d.id === prefMatch[1])) {
+            setDentistaId(prefMatch[1])
+            setDescricao(desc.replace(/^\[[a-z]+\]\s*/, ''))
+          } else if (data.dentista_id) {
+            setDentistaId('rosieli')
+            setDescricao(desc)
+          } else {
+            setDentistaId('')
+            setDescricao(desc)
+          }
         }
         setCarregando(false)
       })
@@ -66,13 +68,25 @@ export default function EditarAtendimentoPage() {
     setSalvando(true)
     setErro(null)
 
+    // Resolver dentista_id real para Rosieli, null para externos
+    let dentistaIdFinal: string | null = null
+    if (dentistaId === 'rosieli' && clinicaId) {
+      const { data: dr } = await supabase
+        .from('usuarios').select('id').eq('clinica_id', clinicaId)
+        .ilike('nome', '%Rosieli%').limit(1).single()
+      dentistaIdFinal = (dr as { id: string } | null)?.id ?? null
+    }
+    const descFinal = dentistaId !== 'rosieli' && dentistaId
+      ? `[${dentistaId}]${descricao ? ' ' + descricao : ''}`
+      : (descricao || null)
+
     const { error } = await supabase
       .from('atendimentos')
       .update({
         data_atendimento: data,
         procedimento_id: procedimentoId || null,
-        dentista_id: dentistaId || null,
-        descricao: descricao || null,
+        dentista_id: dentistaIdFinal,
+        descricao: descFinal,
       })
       .eq('id', atendimentoId)
 

@@ -17,8 +17,9 @@ type Aba = 'visao_geral' | 'recebimentos' | 'orcamentos' | 'comissao'
 
 // Dentistas fixos — identificados pelo prefixo [key] gravado na descrição dos avulsos
 const DENTISTAS_CLINICA = [
-  { key: 'rosiele', nome: 'Drª Rosiele Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700' },
+  { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700' },
   { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC', cor: 'bg-blue-100 text-blue-700'     },
+  { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700'    },
 ]
 
 const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -324,7 +325,7 @@ function useComissaoDentista(clinicaId: string, mes: string) {
       // Identificar dentista pelo tag [key] em qualquer posição da descrição
       // Formato avulso:    [eduardo] Manutenção
       // Formato orçamento: [orc:UUID][eduardo] Proc1, Proc2
-      let dentistaKey = 'rosiele' // padrão
+      let dentistaKey = 'rosieli' // padrão
       const allTags = [...lanc.descricao.matchAll(/\[([a-z]+)\]/g)]
       for (const m of allTags) {
         if (grupos[m[1]]) { dentistaKey = m[1]; break }
@@ -363,7 +364,7 @@ export default function FinanceiroPage() {
   const { metricas, proximosVencimentos, carregando, recarregar } = useFinanceiro(clinicaId ?? '', mes)
   const { recebimentos, total: totalRecebido, carregando: carregandoRec } = useRecebimentos(clinicaId ?? '', mes)
   const { orcamentos, carregando: carregandoOrc } = useOrcamentosFinanceiro(clinicaId ?? '')
-  const { percentualRosiele, percentualPatricia } = useComissaoStore()
+  const { percentualRosieli, percentualPatricia } = useComissaoStore()
   const { porDentista, carregando: carregandoCom } = useComissaoDentista(clinicaId ?? '', mesCom)
 
   function navMes(dir: -1 | 1) {
@@ -821,7 +822,7 @@ export default function FinanceiroPage() {
 
             <div className="bg-gray-100 rounded-xl px-4 py-2.5 flex items-center justify-between">
               <p className="text-xs text-gray-500">
-                Rosiele recebe <strong>{percentualRosiele}%</strong> · Patricia recebe <strong>{percentualPatricia}%</strong> do bruto do Dr. Eduardo
+                Rosieli recebe <strong>{percentualRosieli}%</strong> · Patricia recebe <strong>{percentualPatricia}%</strong> do bruto do Dr. Eduardo
               </p>
               <Link href="/configuracoes/comissao" className="text-xs text-blue-600 font-semibold flex-shrink-0 ml-2">Editar</Link>
             </div>
@@ -833,13 +834,13 @@ export default function FinanceiroPage() {
                 ))}
               </div>
             ) : (() => {
-              const rosiele = porDentista.find(d => d.dentistaKey === 'rosiele')
+              const rosiele = porDentista.find(d => d.dentistaKey === 'rosieli')
               const eduardo = porDentista.find(d => d.dentistaKey === 'eduardo')
               const eduardoTotal     = eduardo?.totalRecebido ?? 0
-              const paraRosiele      = eduardoTotal * percentualRosiele / 100
+              const paraRosieli      = eduardoTotal * percentualRosieli / 100
               const paraPatricia     = eduardoTotal * percentualPatricia / 100
-              const roseileTotal     = (rosiele?.totalRecebido ?? 0) + paraRosiele
-              const eduardoLiquido   = eduardoTotal - paraRosiele - paraPatricia
+              const roseileTotal     = (rosiele?.totalRecebido ?? 0) + paraRosieli
+              const eduardoLiquido   = eduardoTotal - paraRosieli - paraPatricia
               return (
                 <div className="space-y-3">
                   <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -856,8 +857,8 @@ export default function FinanceiroPage() {
                         <p className="text-sm font-bold text-gray-900 mt-0.5">{formatarMoeda(eduardoTotal)}</p>
                       </div>
                       <div className="px-3 py-3 text-center bg-purple-50">
-                        <p className="text-xs text-purple-500">Para Rosiele ({percentualRosiele}%)</p>
-                        <p className="text-sm font-bold text-purple-700 mt-0.5">{formatarMoeda(paraRosiele)}</p>
+                        <p className="text-xs text-purple-500">Para Rosieli ({percentualRosieli}%)</p>
+                        <p className="text-sm font-bold text-purple-700 mt-0.5">{formatarMoeda(paraRosieli)}</p>
                       </div>
                       <div className="px-3 py-3 text-center">
                         <p className="text-xs text-gray-400">Líquido</p>
@@ -886,7 +887,7 @@ export default function FinanceiroPage() {
                     <div className="flex items-center gap-3 px-4 pt-4 pb-3">
                       <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-700 flex-shrink-0">RH</div>
                       <div>
-                        <p className="font-bold text-gray-900 text-sm">Drª Rosiele Hoffmann</p>
+                        <p className="font-bold text-gray-900 text-sm">Drª Rosieli Hoffmann</p>
                         <p className="text-xs text-gray-400">Produção própria + repasse líquido do Dr. Eduardo</p>
                       </div>
                     </div>
@@ -897,7 +898,7 @@ export default function FinanceiroPage() {
                       </div>
                       <div className="px-3 py-3 text-center bg-blue-50">
                         <p className="text-xs text-blue-500">+ Do Dr. Eduardo</p>
-                        <p className="text-sm font-bold text-blue-700 mt-0.5">+{formatarMoeda(paraRosiele)}</p>
+                        <p className="text-sm font-bold text-blue-700 mt-0.5">+{formatarMoeda(paraRosieli)}</p>
                       </div>
                       <div className="px-3 py-3 text-center">
                         <p className="text-xs text-purple-600 font-semibold">Total</p>

@@ -11,7 +11,7 @@ import { useComissaoStore } from '@/store/comissao.store'
 export default function ConfiguracoesPage() {
   const router = useRouter()
   const { setUsuario } = useAuthStore()
-  const { percentualRosiele, percentualPatricia } = useComissaoStore()
+  const { percentualRosieli, percentualPatricia } = useComissaoStore()
 
   async function sair() {
     await supabase.auth.signOut()
@@ -55,7 +55,7 @@ export default function ConfiguracoesPage() {
           <div className="flex-1">
             <p className="font-medium text-gray-900">Comissão da Secretária</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              Rosiele {percentualRosiele}% · Patricia {percentualPatricia}% do bruto do Dr. Eduardo
+              Rosieli {percentualRosieli}% · Patricia {percentualPatricia}% do bruto do Dr. Eduardo
             </p>
           </div>
           <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">

@@ -53,15 +53,21 @@ export default function DetalheAtendimentoPage() {
       return
     }
 
-    // Buscar nome do dentista separadamente
+    // Buscar nome do dentista
+    // - Se tem dentista_id: é Rosieli, buscar no banco
+    // - Se não tem: checar prefixo [key] na descrição para Eduardo/Pamela
+    const DENTISTAS_EXT: Record<string, string> = {
+      eduardo: 'Drº Eduardo Cortelleti',
+      pamela:  'Drª Pamela Bolsoni',
+    }
     let dentistaNome: string | null = null
     if (atend.dentista_id) {
       const { data: dentista } = await supabase
-        .from('usuarios')
-        .select('nome')
-        .eq('id', atend.dentista_id)
-        .single()
+        .from('usuarios').select('nome').eq('id', atend.dentista_id).single()
       dentistaNome = (dentista as { nome: string } | null)?.nome ?? null
+    } else if (atend.descricao) {
+      const m = atend.descricao.match(/^\[([a-z]+)\]/)
+      if (m && DENTISTAS_EXT[m[1]]) dentistaNome = DENTISTAS_EXT[m[1]]
     }
 
     const { count: totalRx } = await supabase
@@ -74,7 +80,7 @@ export default function DetalheAtendimentoPage() {
       paciente_id: atend.paciente_id,
       data_atendimento: atend.data_atendimento,
       procedimento_nome: (atend.procedimento as unknown as { nome: string } | null)?.nome ?? null,
-      descricao: atend.descricao,
+      descricao: atend.descricao?.replace(/^\[[a-z]+\]\s*/, '') || null,
       dentista_nome: dentistaNome,
       total_radiografias: totalRx ?? 0,
     })

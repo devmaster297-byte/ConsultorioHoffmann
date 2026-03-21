@@ -67,8 +67,9 @@ interface ResumoFinanceiro {
 // ─── Configurações ────────────────────────────────────────────────────────────
 
 const DENTISTAS = [
-  { key: 'rosiele', nome: 'Drª Rosiele', initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { key: 'eduardo', nome: 'Drº Eduardo', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
+  { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
+  { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700 border-rose-200'      },
 ]
 
 const FORMAS = [
@@ -108,7 +109,7 @@ function ModalRegistrarPagamento({
   const [forma, setForma] = useState('pix')
   const [data, setData] = useState(hoje)
   const [observacao, setObservacao] = useState('')
-  const [dentistaKey, setDentistaKey] = useState<'rosiele' | 'eduardo'>('rosiele')
+  const [dentistaKey, setDentistaKey] = useState<'rosieli' | 'eduardo' | 'pamela'>('rosieli')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -250,7 +251,7 @@ function ModalRegistrarPagamento({
             </label>
             <div className="grid grid-cols-2 gap-2">
               {DENTISTAS.map((d) => (
-                <button key={d.key} type="button" onClick={() => setDentistaKey(d.key as 'rosiele' | 'eduardo')}
+                <button key={d.key} type="button" onClick={() => setDentistaKey(d.key as 'rosieli' | 'eduardo' | 'pamela')}
                   className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${
                     dentistaKey === d.key
                       ? 'border-blue-500 bg-blue-50 font-semibold'

@@ -12,11 +12,12 @@ interface Procedimento {
   nome: string
 }
 
-interface Dentista {
-  id: string
-  nome: string
-  perfil: string
-}
+// Dentistas fixos — não buscar do banco para evitar incluir a secretária
+const DENTISTAS_FIXOS = [
+  { id: 'rosieli', nome: 'Drª Rosieli Hoffmann'   },
+  { id: 'eduardo', nome: 'Drº Eduardo Cortelleti' },
+  { id: 'pamela',  nome: 'Drª Pamela Bolsoni'     },
+]
 
 export default function NovoAtendimentoPage() {
   const { id: pacienteId } = useParams<{ id: string }>()
@@ -24,7 +25,7 @@ export default function NovoAtendimentoPage() {
   const { clinicaId } = useAuthStore()
 
   const [procedimentos, setProcedimentos] = useState<Procedimento[]>([])
-  const [dentistas, setDentistas] = useState<Dentista[]>([])
+  const [dentistas, setDentistas] = useState<typeof DENTISTAS_FIXOS>([])
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -48,20 +49,8 @@ export default function NovoAtendimentoPage() {
       .order('nome')
       .then(({ data }) => setProcedimentos(data ?? []))
 
-    // Buscar dentistas da clínica
-    supabase
-      .from('usuarios')
-      .select('id, nome, perfil')
-      .eq('clinica_id', clinicaId)
-      .eq('ativo', true)
-      .in('perfil', ['dentista', 'admin'])
-      .order('nome')
-      .then(({ data }) => {
-        const lista = (data ?? []) as Dentista[]
-        setDentistas(lista)
-        // Pré-selecionar primeiro dentista se houver apenas um
-        if (lista.length === 1) setDentistaId(lista[0].id)
-      })
+    // Dentistas fixos da clínica (evita buscar Patricia pelo perfil admin)
+    setDentistas(DENTISTAS_FIXOS)
   }, [clinicaId])
 
   async function salvar() {
@@ -71,15 +60,29 @@ export default function NovoAtendimentoPage() {
     setSalvando(true)
     setErro(null)
 
+    // Para dentistas externos (Eduardo, Pamela), dentista_id fica null
+    // Para Rosieli, busca o ID real na tabela usuarios
+    let dentistaIdFinal: string | null = null
+    if (dentistaId === 'rosieli' && clinicaId) {
+      const { data: dr } = await supabase
+        .from('usuarios').select('id').eq('clinica_id', clinicaId)
+        .ilike('nome', '%Rosieli%').limit(1).single()
+      dentistaIdFinal = (dr as { id: string } | null)?.id ?? null
+    }
+    // Guardar o nome do dentista na descrição como prefixo se for externo
+    const descFinal = dentistaId !== 'rosieli' && dentistaId
+      ? `[${dentistaId}]${descricao ? ' ' + descricao : ''}`
+      : (descricao || null)
+
     const { error } = await supabase
       .from('atendimentos')
       .insert({
         clinica_id:       clinicaId,
         paciente_id:      pacienteId,
-        dentista_id:      dentistaId,
+        dentista_id:      dentistaIdFinal,
         data_atendimento: data,
         procedimento_id:  procedimentoId || null,
-        descricao:        descricao || null,
+        descricao:        descFinal,
         valor_total:      null,
       })
 
