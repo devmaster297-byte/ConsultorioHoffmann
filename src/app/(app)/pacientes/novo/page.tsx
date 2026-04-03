@@ -17,7 +17,8 @@ const schema = z.object({
   telefone: z.string().optional().or(z.literal('')),
   cpf: z.string().optional().or(z.literal('')),
   data_nascimento: z.string().optional().or(z.literal('')),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  endereco: z.string().optional().or(z.literal('')),
+  alergias: z.string().optional().or(z.literal('')),
   observacoes: z.string().optional().or(z.literal('')),
 })
 
@@ -53,7 +54,8 @@ export default function NovoPacientePage() {
         telefone: data.telefone || null,
         cpf: data.cpf || null,
         data_nascimento: data.data_nascimento || null,
-        email: data.email || null,
+        endereco: data.endereco || null,
+        alergias: data.alergias || null,
         observacoes: data.observacoes || null,
         foto_url: fotoUrl,
       })
@@ -172,16 +174,23 @@ export default function NovoPacientePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
               <input
-                {...register('email')}
-                type="email"
-                placeholder="maria@email.com"
+                {...register('endereco')}
+                type="text"
+                placeholder="Rua, número, bairro, cidade..."
                 className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
-              {errors.email && (
-                <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
-              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Alergias</label>
+              <textarea
+                {...register('alergias')}
+                placeholder="Ex: Dipirona, Penicilina, látex..."
+                rows={2}
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+              />
             </div>
 
             <div>
