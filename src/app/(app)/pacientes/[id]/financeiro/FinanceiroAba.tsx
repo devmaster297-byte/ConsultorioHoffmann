@@ -68,7 +68,7 @@ interface ResumoFinanceiro {
 
 const DENTISTAS = [
   { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
+  { key: 'eduardo', nome: 'Drº Eduardo Corteletti', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
   { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700 border-rose-200'      },
 ]
 
@@ -432,57 +432,56 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
     const lancPagoMap: Record<string, number> = {}
     const pagamentosColetados: Pagamento[] = []
 
-    if (orcamentosCompletos.length > 0) {
-      const { data: lancsRaw } = await supabase
-        .from('financeiro_lancamentos')
-        .select('id, descricao, valor_total')
-        .eq('clinica_id', clinicaId)
-        .eq('paciente_id', pacienteId)
-        .eq('tipo', 'receita')
-        .order('created_at', { ascending: false })
+    // FIX: Busca TODOS os lançamentos de receita do paciente (orçamentos + avulsos)
+    // Antes, a query ficava dentro do `if (orcamentosCompletos.length > 0)`, o que
+    // fazia os pagamentos avulsos serem completamente ignorados quando não havia orçamentos.
+    const { data: lancsRaw } = await supabase
+      .from('financeiro_lancamentos')
+      .select('id, descricao, valor_total')
+      .eq('clinica_id', clinicaId)
+      .eq('paciente_id', pacienteId)
+      .eq('tipo', 'receita')
+      .order('created_at', { ascending: false })
 
-      const lancsDB = (lancsRaw ?? []) as Array<{ id: string; descricao: string; valor_total: number }>
+    const lancsDB = (lancsRaw ?? []) as Array<{ id: string; descricao: string; valor_total: number }>
 
-      // Associar cada lançamento ao seu orçamento pelo prefixo "[orc:UUID]"
-      for (const lanc of lancsDB) {
-        const orcId = extrairOrcamentoIdDaDescricao(lanc.descricao)
-        if (orcId) {
-          // Prefixo encontrado: associação exata por UUID
-          lancPorOrcId[orcId] = lanc
-        }
+    // Separar lançamentos de orçamento (prefixo [orc:UUID]) dos avulsos
+    for (const lanc of lancsDB) {
+      const orcId = extrairOrcamentoIdDaDescricao(lanc.descricao)
+      if (orcId) {
+        lancPorOrcId[orcId] = lanc
       }
+    }
 
-      // Buscar parcelas pagas dos lançamentos encontrados
-      const lancIds = lancsDB.map((l) => l.id)
-      if (lancIds.length > 0) {
-        const { data: parcelasRaw } = await supabase
-          .from('financeiro_parcelas')
-          .select('id, lancamento_id, valor, valor_pago, data_pagamento, status')
-          .in('lancamento_id', lancIds)
-          .order('data_pagamento', { ascending: false })
+    // Buscar parcelas pagas de todos os lançamentos (orçamentos + avulsos)
+    const lancIds = lancsDB.map((l) => l.id)
+    if (lancIds.length > 0) {
+      const { data: parcelasRaw } = await supabase
+        .from('financeiro_parcelas')
+        .select('id, lancamento_id, valor, valor_pago, data_pagamento, status')
+        .in('lancamento_id', lancIds)
+        .order('data_pagamento', { ascending: false })
 
-        const parcelasDB = (parcelasRaw ?? []) as Array<{
-          id: string; lancamento_id: string; valor: number
-          valor_pago: number | null; data_pagamento: string | null; status: string
-        }>
+      const parcelasDB = (parcelasRaw ?? []) as Array<{
+        id: string; lancamento_id: string; valor: number
+        valor_pago: number | null; data_pagamento: string | null; status: string
+      }>
 
-        parcelasDB.forEach((p) => {
-          if (p.status === 'pago' || p.status === 'pago_parcial') {
-            // FIX: incluir pago_parcial no total pago
-            lancPagoMap[p.lancamento_id] = (lancPagoMap[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
-            if (p.data_pagamento) {
-              const lanc = lancsDB.find((l) => l.id === p.lancamento_id)
-              pagamentosColetados.push({
-                id: p.id, lancamento_id: p.lancamento_id,
-                descricao_lancamento: lanc?.descricao ?? '',
-                valor_pago: p.valor_pago ?? p.valor,
-                data_pagamento: p.data_pagamento,
-                forma_pagamento: null,
-              })
-            }
+      parcelasDB.forEach((p) => {
+        if (p.status === 'pago' || p.status === 'pago_parcial') {
+          lancPagoMap[p.lancamento_id] = (lancPagoMap[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
+          if (p.data_pagamento) {
+            const lanc = lancsDB.find((l) => l.id === p.lancamento_id)
+            pagamentosColetados.push({
+              id: p.id, lancamento_id: p.lancamento_id,
+              descricao_lancamento: lanc?.descricao ?? '',
+              valor_pago: p.valor_pago ?? p.valor,
+              data_pagamento: p.data_pagamento,
+              forma_pagamento: null,
+            })
           }
-        })
-      }
+        }
+      })
     }
 
     // Cruzar orçamentos com saldo (usando mapa por ID do orçamento)
@@ -764,7 +763,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
             <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
               <p className="text-4xl mb-2">💳</p>
               <p className="text-sm font-medium text-gray-500">Nenhum pagamento registrado</p>
-              <p className="text-xs text-gray-400 mt-1">Aprove um orçamento e registre os pagamentos</p>
+              <p className="text-xs text-gray-400 mt-1">Nenhum pagamento de orçamento ou avulso registrado</p>
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -781,6 +780,12 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                       {p.forma_pagamento ? FORMA_LABEL[p.forma_pagamento] : 'Pagamento'}
                       {' • '}{formatarData(p.data_pagamento)}
                     </p>
+                    {/* Mostra descrição do avulso (sem o prefixo [dentista]) */}
+                    {!extrairOrcamentoIdDaDescricao(p.descricao_lancamento) && p.descricao_lancamento && (
+                      <p className="text-xs text-blue-500 mt-0.5 truncate">
+                        {p.descricao_lancamento.replace(/^\[[a-z]+\]\s*/, '')}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => setExclusaoInfo({
