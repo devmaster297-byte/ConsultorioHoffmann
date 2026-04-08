@@ -18,7 +18,7 @@ type Aba = 'visao_geral' | 'recebimentos' | 'orcamentos' | 'comissao'
 // Dentistas fixos — identificados pelo prefixo [key] gravado na descrição dos avulsos
 const DENTISTAS_CLINICA = [
   { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700' },
-  { key: 'eduardo', nome: 'Drº Eduardo Cortelleti', initials: 'EC', cor: 'bg-blue-100 text-blue-700'     },
+  { key: 'eduardo', nome: 'Drº Eduardo Corteletti', initials: 'EC', cor: 'bg-blue-100 text-blue-700'     },
   { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700'    },
 ]
 
@@ -847,7 +847,7 @@ export default function FinanceiroPage() {
                     <div className="flex items-center gap-3 px-4 pt-4 pb-3">
                       <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700 flex-shrink-0">EC</div>
                       <div>
-                        <p className="font-bold text-gray-900 text-sm">Drº Eduardo Cortelleti</p>
+                        <p className="font-bold text-gray-900 text-sm">Drº Eduardo Corteletti</p>
                         <p className="text-xs text-gray-400">{eduardo?.numPagamentos ?? 0} pagamento{(eduardo?.numPagamentos ?? 0) !== 1 ? 's' : ''} em {nomeMes(mesCom)}</p>
                       </div>
                     </div>

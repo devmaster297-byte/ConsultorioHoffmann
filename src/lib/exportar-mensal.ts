@@ -309,7 +309,7 @@ export async function exportarMensal(clinicaId: string, mes: string): Promise<vo
   const wsEduardo = XLSX.utils.aoa_to_sheet([])
   construirAba(
     wsEduardo,
-    `Acompanhamento Pacientes ${tituloMes} — Drº Eduardo Cortelleti`,
+    `Acompanhamento Pacientes ${tituloMes} — Drº Eduardo Corteletti`,
     eduardo,
     'Eduardo'
   )

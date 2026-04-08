@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase-browser'
 
 const DENTISTAS_EXTERNOS: Record<string, string> = {
-  eduardo: 'Drº Eduardo Cortelleti',
+  eduardo: 'Drº Eduardo Corteletti',
   pamela:  'Drª Pamela Bolsoni',
 }
 
