@@ -1,5 +1,4 @@
 // src/app/(app)/pacientes/[id]/historico/page.tsx
-// Página dedicada de histórico de um paciente (acessada via aba ou link direto)
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
@@ -58,8 +57,7 @@ export default function HistoricoPacientePage() {
                 data={a.data_atendimento}
                 procedimento={a.procedimento_nome}
                 descricao={a.descricao}
-                valor={a.valor_total}
-                statusPagamento={a.status_pagamento}
+                dentistaNome={a.dentista_nome}
                 totalRadiografias={a.total_radiografias}
               />
             ))}

@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Search, ScanLine, Plus } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { RxViewer } from '@/components/radiografias/RxViewer'
 import { RadiografiaComUrl } from '@/lib/hooks/useRadiografias'
@@ -47,7 +47,6 @@ export default function RadiografiasGlobalPage() {
       if (!clinicaId) return
       setCarregando(true)
 
-      const supabase = createClient()
       const { data } = await supabase
         .from('radiografias')
         .select(`*, paciente:pacientes(nome)`)
@@ -114,7 +113,6 @@ export default function RadiografiasGlobalPage() {
   }, [busca, carregarDebounced, carregar])
 
   async function handleDeletar(rx: RadiografiaComUrl) {
-    const supabase = createClient()
     const { error } = await supabase.from('radiografias').delete().eq('id', rx.id)
     if (error) return false
 
@@ -125,7 +123,6 @@ export default function RadiografiasGlobalPage() {
   }
 
   async function handleAtualizarAnotacao(rxId: string, anotacao: string) {
-    const supabase = createClient()
     const { error } = await supabase.from('radiografias').update({ anotacao }).eq('id', rxId)
     if (error) return false
 

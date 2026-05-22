@@ -9,7 +9,7 @@ import {
   ArrowLeft, Phone, Plus, FileText,
   Edit2, ClipboardList,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { Paciente } from '@/lib/supabase/types'
 import { StatusFinanceiro, calcularStatusFinanceiro } from '@/lib/hooks/usePacienteStatus'
 import { useAtendimentos } from '@/lib/hooks/useAtendimentos'
@@ -19,6 +19,7 @@ import { AtendimentoItem } from '@/components/pacientes/AtendimentoItem'
 import { FinanceiroAba } from './financeiro/FinanceiroAba'
 import { RadiografiasAba } from './radiografias/RadiografiasAba'
 import { iniciais, formatarTelefone, formatarMoeda } from '@/lib/utils'
+import { useResumoFinanceiroPaciente } from '@/lib/hooks/useResumoFinanceiroPaciente'
 
 type Aba = 'historico' | 'financeiro' | 'radiografias'
 
@@ -50,7 +51,6 @@ export default function FichaPacientePage() {
   const carregarPaciente = useCallback(async () => {
     if (!id || !clinicaId) { setCarregandoPaciente(false); return }
     try {
-      const supabase = createClient()
       const { data: pac, error } = await supabase
         .from('pacientes').select('*').eq('id', id).single()
       if (error || !pac) {
@@ -71,6 +71,7 @@ export default function FichaPacientePage() {
   useEffect(() => { carregarPaciente() }, [carregarPaciente])
 
   const { atendimentos, carregando: carregandoAtend } = useAtendimentos(id ?? '', clinicaId ?? '')
+  const resumoFin = useResumoFinanceiroPaciente(id ?? '', clinicaId ?? '')
 
   if (erroCarregar) {
     return (
@@ -90,8 +91,6 @@ export default function FichaPacientePage() {
   }
 
   if (!paciente) return null
-
-  const totalGerado = atendimentos.reduce((acc, a) => acc + (a.valor_total ?? 0), 0)
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
@@ -135,18 +134,29 @@ export default function FichaPacientePage() {
             )}
           </div>
 
-          {/* Métricas rápidas no canto direito */}
-          <div className="flex-shrink-0 text-right border-l border-gray-100 pl-4">
-            <p className="text-xl font-bold text-gray-900 leading-none">{atendimentos.length}</p>
-            <p className="text-xs text-gray-400 mt-0.5">consultas</p>
-            {totalGerado > 0 && (
-              <>
-                <p className="text-sm font-bold text-blue-600 mt-2 leading-none">{formatarMoeda(totalGerado)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">gerado</p>
-              </>
+          {/* Resumo financeiro compacto */}
+          <div className="flex-shrink-0 border-l border-gray-100 pl-4 space-y-1.5 text-right">
+            <div>
+              <p className="text-lg font-bold text-gray-900 leading-none">{atendimentos.length}</p>
+              <p className="text-[10px] text-gray-400">consultas</p>
+            </div>
+            {!resumoFin.carregando && resumoFin.totalContratado > 0 && (
+              <div>
+                <p className={`text-sm font-bold leading-none ${resumoFin.saldoDevedor > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                  {resumoFin.saldoDevedor > 0 ? formatarMoeda(resumoFin.saldoDevedor) : '✓ Quitado'}
+                </p>
+                <p className="text-[10px] text-gray-400">{resumoFin.saldoDevedor > 0 ? 'em aberto' : ''}</p>
+              </div>
             )}
           </div>
         </div>
+
+        {/* Alergias */}
+        {paciente.alergias && (
+          <div className="mx-4 mb-2 rounded-xl bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-800">
+            <span className="font-semibold">⚠️ Alergias: </span>{paciente.alergias}
+          </div>
+        )}
 
         {/* Observações */}
         {paciente.observacoes && (
@@ -155,7 +165,7 @@ export default function FichaPacientePage() {
           </div>
         )}
 
-        {/* Ações rápidas — só as 2 principais */}
+        {/* Ações rápidas */}
         <div className="grid grid-cols-2 gap-2 px-4 pb-4">
           <button
             onClick={() => router.push(`/pacientes/${id}/atendimento/novo`)}
@@ -189,7 +199,7 @@ export default function FichaPacientePage() {
         </div>
       </div>
 
-      {/* Conteúdo — lazy rendering com hidden para manter estado */}
+      {/* Conteúdo das abas */}
       <div className="flex-1 px-4 py-4">
         <div className={abaAtiva === 'historico' ? 'block' : 'hidden'}>
           {abasAbertas.has('historico') && (
@@ -213,13 +223,15 @@ export default function FichaPacientePage() {
   )
 }
 
-// ─── Aba Histórico ────────────────────────────────────────────────────────────
+// ─── Aba Histórico ─────────────────────────────────────────────────────────────
+
+import type { AtendimentoDetalhado } from '@/lib/hooks/useAtendimentos'
 
 function HistoricoAba({
   atendimentos,
   pacienteId,
 }: {
-  atendimentos: ReturnType<typeof import('@/lib/hooks/useAtendimentos').useAtendimentos>['atendimentos']
+  atendimentos: AtendimentoDetalhado[]
   pacienteId: string
 }) {
   if (atendimentos.length === 0) {
@@ -246,8 +258,7 @@ function HistoricoAba({
           data={a.data_atendimento}
           procedimento={a.procedimento_nome}
           descricao={a.descricao}
-          valor={a.valor_total}
-          statusPagamento={a.status_pagamento}
+          dentistaNome={a.dentista_nome}
           totalRadiografias={a.total_radiografias}
         />
       ))}

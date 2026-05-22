@@ -17,19 +17,18 @@ export const useAuthStore = create<AuthState>()(
       clinicaId: null,
       email: null,
       setUsuario: (usuario, email) =>
-        set({ 
-          usuario, 
+        set({
+          usuario,
           clinicaId: usuario?.clinica_id ?? null,
-          email: email ?? null
+          email: email ?? null,
         }),
     }),
     {
-      name: 'hoffmann-auth', // chave no localStorage
-      // Só persiste os dados, não a função
+      name: 'hoffmann-auth',
       partialize: (state) => ({
         usuario: state.usuario,
         clinicaId: state.clinicaId,
-        email: state.email
+        email: state.email,
       }),
     }
   )

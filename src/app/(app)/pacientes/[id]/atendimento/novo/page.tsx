@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, ChevronDown, History } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 
 interface Procedimento {
@@ -12,49 +12,78 @@ interface Procedimento {
   nome: string
 }
 
+// Dentistas fixos — não buscar do banco para evitar incluir a secretária
+const DENTISTAS_FIXOS = [
+  { id: 'rosieli', nome: 'Drª Rosieli Hoffmann'   },
+  { id: 'eduardo', nome: 'Drº Eduardo Cortelleti' },
+  { id: 'pamela',  nome: 'Drª Pamela Bolsoni'     },
+]
+
 export default function NovoAtendimentoPage() {
   const { id: pacienteId } = useParams<{ id: string }>()
   const router = useRouter()
-  const { clinicaId, usuario } = useAuthStore()
+  const { clinicaId } = useAuthStore()
 
   const [procedimentos, setProcedimentos] = useState<Procedimento[]>([])
+  const [dentistas, setDentistas] = useState<typeof DENTISTAS_FIXOS>([])
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const hoje = new Date().toISOString().split('T')[0]
   const [data, setData] = useState(hoje)
   const [procedimentoId, setProcId] = useState('')
+  const [dentistaId, setDentistaId] = useState('')
   const [descricao, setDescricao] = useState('')
 
   const ehPassado = data < hoje
 
   useEffect(() => {
     if (!clinicaId) return
-    createClient()
+
+    // Buscar procedimentos
+    supabase
       .from('procedimentos')
       .select('id, nome')
       .eq('clinica_id', clinicaId)
       .eq('ativo', true)
       .order('nome')
       .then(({ data }) => setProcedimentos(data ?? []))
+
+    // Dentistas fixos da clínica (evita buscar Patricia pelo perfil admin)
+    setDentistas(DENTISTAS_FIXOS)
   }, [clinicaId])
 
   async function salvar() {
     if (!data) { setErro('Informe a data'); return }
+    if (!dentistaId) { setErro('Selecione o dentista'); return }
     if (!clinicaId) { setErro('Sessão expirada, recarregue'); return }
     setSalvando(true)
     setErro(null)
 
-    const { error } = await createClient()
+    // Para dentistas externos (Eduardo, Pamela), dentista_id fica null
+    // Para Rosieli, busca o ID real na tabela usuarios
+    let dentistaIdFinal: string | null = null
+    if (dentistaId === 'rosieli' && clinicaId) {
+      const { data: dr } = await supabase
+        .from('usuarios').select('id').eq('clinica_id', clinicaId)
+        .ilike('nome', '%Rosieli%').limit(1).single()
+      dentistaIdFinal = (dr as { id: string } | null)?.id ?? null
+    }
+    // Guardar o nome do dentista na descrição como prefixo se for externo
+    const descFinal = dentistaId !== 'rosieli' && dentistaId
+      ? `[${dentistaId}]${descricao ? ' ' + descricao : ''}`
+      : (descricao || null)
+
+    const { error } = await supabase
       .from('atendimentos')
       .insert({
         clinica_id:       clinicaId,
         paciente_id:      pacienteId,
-        dentista_id:      usuario?.id ?? null,
+        dentista_id:      dentistaIdFinal,
         data_atendimento: data,
         procedimento_id:  procedimentoId || null,
-        descricao:        descricao || null,
-        valor_total:      null, // campo mantido no banco mas não preenchido aqui
+        descricao:        descFinal,
+        valor_total:      null,
       })
 
     if (error) {
@@ -97,6 +126,41 @@ export default function NovoAtendimentoPage() {
               onChange={(e) => setData(e.target.value)}
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
             />
+          </div>
+
+          {/* Dentista */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Dentista <span className="text-red-400">*</span>
+            </label>
+            {dentistas.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">Carregando dentistas...</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {dentistas.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => setDentistaId(d.id)}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-all ${
+                      dentistaId === d.id
+                        ? 'border-blue-500 bg-blue-50 text-blue-800 font-semibold'
+                        : 'border-gray-200 bg-white text-gray-700'
+                    }`}
+                  >
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      dentistaId === d.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {d.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="flex-1 text-left">{d.nome}</span>
+                    {dentistaId === d.id && (
+                      <span className="text-blue-500 text-lg leading-none">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Procedimento */}
@@ -148,7 +212,7 @@ export default function NovoAtendimentoPage() {
         <div className="pb-8">
           <button
             onClick={salvar}
-            disabled={salvando || !clinicaId}
+            disabled={salvando || !clinicaId || !dentistaId}
             className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
           >
             {salvando ? 'Salvando...' : 'Salvar Atendimento'}

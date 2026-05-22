@@ -4,10 +4,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Edit2, Trash2, Scan, DollarSign, Calendar, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { useAuthStore } from '@/store/auth.store'
-import { formatarData, formatarMoeda } from '@/lib/utils'
+import { ArrowLeft, Edit2, Trash2, Scan, Calendar, User } from 'lucide-react'
+import { supabase } from '@/lib/supabase-browser'
+import { formatarData } from '@/lib/utils'
 
 interface AtendimentoFull {
   id: string
@@ -15,59 +14,36 @@ interface AtendimentoFull {
   data_atendimento: string
   procedimento_nome: string | null
   descricao: string | null
-  valor_total: number | null
   dentista_nome: string | null
   total_radiografias: number
-  parcelas: Array<{
-    id: string
-    numero: number
-    valor: number
-    data_vencimento: string
-    status: string
-    valor_pago: number | null
-  }>
-}
-
-// Interface para tipar o retorno do Supabase e evitar erro de 'any'
-interface LancamentoSimples {
-  id: string
-}
-
-const statusPagConfig: Record<string, { label: string; className: string }> = {
-  pago: { label: 'Pago', className: 'text-emerald-700 bg-emerald-50' },
-  pago_parcial: { label: 'Pago parcial', className: 'text-amber-700 bg-amber-50' },
-  pendente: { label: 'Pendente', className: 'text-blue-700 bg-blue-50' },
-  vencido: { label: 'Vencido', className: 'text-red-700 bg-red-50' },
 }
 
 export default function DetalheAtendimentoPage() {
   const { id: pacienteId, atendimentoId } = useParams<{ id: string; atendimentoId: string }>()
   const router = useRouter()
-  const { clinicaId } = useAuthStore()
   const [dados, setDados] = useState<AtendimentoFull | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
 
   useEffect(() => {
-    if (!atendimentoId || !clinicaId) return
+    if (!atendimentoId) return
     carregar()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atendimentoId, clinicaId])
+  }, [atendimentoId])
 
   async function carregar() {
-    const supabase = createClient()
-
+    // FIX: buscar sem join em usuarios (FK ausente causa erro 400)
+    // Fazemos duas queries separadas: atendimento + dentista por id
     const { data: atend } = await supabase
       .from('atendimentos')
       .select(`
         id,
         paciente_id,
+        dentista_id,
         data_atendimento,
         descricao,
-        valor_total,
-        procedimento:procedimentos(nome),
-        dentista:usuarios(nome)
+        procedimento:procedimentos(nome)
       `)
       .eq('id', atendimentoId)
       .single()
@@ -77,51 +53,42 @@ export default function DetalheAtendimentoPage() {
       return
     }
 
-    // Buscar radiografias
+    // Buscar nome do dentista
+    // - Se tem dentista_id: é Rosieli, buscar no banco
+    // - Se não tem: checar prefixo [key] na descrição para Eduardo/Pamela
+    const DENTISTAS_EXT: Record<string, string> = {
+      eduardo: 'Drº Eduardo Cortelleti',
+      pamela:  'Drª Pamela Bolsoni',
+    }
+    let dentistaNome: string | null = null
+    if (atend.dentista_id) {
+      const { data: dentista } = await supabase
+        .from('usuarios').select('nome').eq('id', atend.dentista_id).single()
+      dentistaNome = (dentista as { nome: string } | null)?.nome ?? null
+    } else if (atend.descricao) {
+      const m = atend.descricao.match(/^\[([a-z]+)\]/)
+      if (m && DENTISTAS_EXT[m[1]]) dentistaNome = DENTISTAS_EXT[m[1]]
+    }
+
     const { count: totalRx } = await supabase
       .from('radiografias')
       .select('*', { count: 'exact', head: true })
       .eq('atendimento_id', atendimentoId)
 
-    // Buscar parcelas via lançamentos com tipagem explícita
-    const { data: lancamentosRaw } = await supabase
-      .from('financeiro_lancamentos')
-      .select('id')
-      .eq('atendimento_id', atendimentoId)
-      .eq('clinica_id', clinicaId)
-
-    const lancamentos = (lancamentosRaw || []) as LancamentoSimples[]
-    const lancIds = lancamentos.map((l) => l.id)
-    
-    let parcelas: AtendimentoFull['parcelas'] = []
-
-    if (lancIds.length > 0) {
-      const { data: parc } = await supabase
-        .from('financeiro_parcelas')
-        .select('id, numero, valor, data_vencimento, status, valor_pago')
-        .in('lancamento_id', lancIds)
-        .order('numero')
-
-      parcelas = (parc || []) as AtendimentoFull['parcelas']
-    }
-
     setDados({
       id: atend.id,
       paciente_id: atend.paciente_id,
       data_atendimento: atend.data_atendimento,
-      procedimento_nome: (atend.procedimento as any)?.nome ?? null,
-      descricao: atend.descricao,
-      valor_total: atend.valor_total,
-      dentista_nome: (atend.dentista as any)?.nome ?? null,
+      procedimento_nome: (atend.procedimento as unknown as { nome: string } | null)?.nome ?? null,
+      descricao: atend.descricao?.replace(/^\[[a-z]+\]\s*/, '') || null,
+      dentista_nome: dentistaNome,
       total_radiografias: totalRx ?? 0,
-      parcelas,
     })
     setCarregando(false)
   }
 
   async function excluir() {
     setExcluindo(true)
-    const supabase = createClient()
     await supabase.from('atendimentos').delete().eq('id', atendimentoId)
     router.push(`/pacientes/${pacienteId}`)
   }
@@ -161,81 +128,62 @@ export default function DetalheAtendimentoPage() {
       </div>
 
       <div className="flex-1 px-4 py-4 space-y-4">
-        {/* Info principal */}
+        {/* Info do atendimento */}
         <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <Calendar className="h-4 w-4 text-gray-400" />
             {formatarData(dados.data_atendimento)}
           </div>
+
           {dados.dentista_nome && (
             <div className="flex items-center gap-2 text-sm text-gray-700">
               <User className="h-4 w-4 text-gray-400" />
               Dr(a). {dados.dentista_nome}
             </div>
           )}
-          {dados.valor_total != null && (
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <DollarSign className="h-4 w-4 text-gray-400" />
-              {formatarMoeda(dados.valor_total)}
-            </div>
-          )}
+
           {dados.descricao && (
             <div className="pt-2 border-t border-gray-100">
-              <p className="text-sm text-gray-600 leading-relaxed">{dados.descricao}</p>
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                {dados.descricao}
+              </p>
             </div>
+          )}
+
+          {!dados.descricao && !dados.dentista_nome && (
+            <p className="text-sm text-gray-400 italic">Sem observações registradas.</p>
           )}
         </div>
 
-        {/* Ações rápidas */}
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href={`/pacientes/${pacienteId}/radiografias?atendimento=${atendimentoId}`}
-            className="flex items-center gap-2 bg-white rounded-xl p-4 shadow-sm active:bg-gray-50"
-          >
+        {/* Raio-X */}
+        <Link
+          href={`/pacientes/${pacienteId}/radiografias?atendimento=${atendimentoId}`}
+          className="flex items-center gap-3 bg-white rounded-xl p-4 shadow-sm active:bg-gray-50"
+        >
+          <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0">
             <Scan className="h-5 w-5 text-indigo-500" />
-            <div>
-              <p className="text-sm font-medium text-gray-900">Raio-X</p>
-              <p className="text-xs text-gray-400">{dados.total_radiografias} imagem{dados.total_radiografias !== 1 ? 'ns' : ''}</p>
-            </div>
-          </Link>
-          <Link
-            href={`/financeiro/lancamento?atendimento=${atendimentoId}&paciente=${pacienteId}`}
-            className="flex items-center gap-2 bg-white rounded-xl p-4 shadow-sm active:bg-gray-50"
-          >
-            <DollarSign className="h-5 w-5 text-emerald-500" />
-            <div>
-              <p className="text-sm font-medium text-gray-900">Cobrança</p>
-              <p className="text-xs text-gray-400">{dados.parcelas.length} parcela{dados.parcelas.length !== 1 ? 's' : ''}</p>
-            </div>
-          </Link>
-        </div>
-
-        {/* Parcelas */}
-        {dados.parcelas.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Pagamentos
-              </p>
-            </div>
-            {dados.parcelas.map((p) => {
-              const cfg = statusPagConfig[p.status] ?? statusPagConfig.pendente
-              return (
-                <div key={p.id} className="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      Parcela {p.numero} — {formatarMoeda(p.valor)}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">Vence {formatarData(p.data_vencimento)}</p>
-                  </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.className}`}>
-                    {cfg.label}
-                  </span>
-                </div>
-              )
-            })}
           </div>
-        )}
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-900">Radiografias</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {dados.total_radiografias > 0
+                ? `${dados.total_radiografias} imagem${dados.total_radiografias !== 1 ? 'ns' : ''} vinculada${dados.total_radiografias !== 1 ? 's' : ''}`
+                : 'Nenhuma imagem — toque para adicionar'}
+            </p>
+          </div>
+          <span className="text-xs text-indigo-600 font-medium">
+            {dados.total_radiografias > 0 ? 'Ver' : 'Adicionar'}
+          </span>
+        </Link>
+
+        {/* Editar atalho */}
+        <Link
+          href={`/pacientes/${pacienteId}/atendimento/${atendimentoId}/editar`}
+          className="flex items-center justify-center gap-2 w-full bg-white rounded-xl p-4 shadow-sm text-sm font-medium text-blue-600 active:bg-blue-50 border border-blue-100"
+        >
+          <Edit2 className="h-4 w-4" />
+          Editar atendimento
+        </Link>
       </div>
 
       {/* Modal confirmação exclusão */}
@@ -244,7 +192,7 @@ export default function DetalheAtendimentoPage() {
           <div className="w-full bg-white rounded-t-2xl p-6 space-y-4">
             <h2 className="font-semibold text-gray-900">Excluir atendimento?</h2>
             <p className="text-sm text-gray-500">
-              Esta ação não pode ser desfeita. As cobranças vinculadas também serão removidas.
+              Esta ação não pode ser desfeita.
             </p>
             <button
               onClick={excluir}

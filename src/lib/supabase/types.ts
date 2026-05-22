@@ -69,7 +69,8 @@ export type Database = {
           data_nascimento: string | null
           cpf: string | null
           telefone: string | null
-          email: string | null
+          endereco: string | null
+          alergias: string | null
           foto_url: string | null
           observacoes: string | null
           created_at: string
@@ -82,7 +83,8 @@ export type Database = {
           data_nascimento?: string | null
           cpf?: string | null
           telefone?: string | null
-          email?: string | null
+          endereco?: string | null
+          alergias?: string | null
           foto_url?: string | null
           observacoes?: string | null
           created_at?: string
@@ -95,7 +97,8 @@ export type Database = {
           data_nascimento?: string | null
           cpf?: string | null
           telefone?: string | null
-          email?: string | null
+          endereco?: string | null
+          alergias?: string | null
           foto_url?: string | null
           observacoes?: string | null
           created_at?: string

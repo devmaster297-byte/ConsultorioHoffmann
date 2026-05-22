@@ -1,6 +1,6 @@
 // src/lib/hooks/useRadiografias.ts
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { Radiografia } from '@/lib/supabase/types'
 
 export interface RadiografiaComUrl extends Radiografia {
@@ -23,7 +23,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
     setCarregando(true)
     setErro(null)
 
-    const supabase = createClient()
 
     let req = supabase
       .from('radiografias')
@@ -84,7 +83,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
       atendimento_id?: string
     }
   ): Promise<{ sucesso: boolean; erro?: string }> {
-    const supabase = createClient()
 
     const ext = file.name.split('.').pop() ?? 'jpg'
     const path = `${clinicaId}/${pacienteId}/${Date.now()}.${ext}`
@@ -117,7 +115,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
   }
 
   async function deletarRadiografia(rx: RadiografiaComUrl): Promise<boolean> {
-    const supabase = createClient()
 
     const { error: dbError } = await supabase
       .from('radiografias')
@@ -139,7 +136,6 @@ export function useRadiografias(pacienteId: string, clinicaId: string, atendimen
     rxId: string,
     anotacao: string
   ): Promise<boolean> {
-    const supabase = createClient()
     const { error } = await supabase
       .from('radiografias')
       .update({ anotacao })

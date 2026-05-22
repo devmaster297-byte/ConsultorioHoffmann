@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft, Trash2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { Paciente } from '@/lib/supabase/types'
 import { FotoUploader } from '@/components/shared/FotoUploader'
@@ -18,7 +18,8 @@ const schema = z.object({
   telefone: z.string().optional().or(z.literal('')),
   cpf: z.string().optional().or(z.literal('')),
   data_nascimento: z.string().optional().or(z.literal('')),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  endereco: z.string().optional().or(z.literal('')),
+  alergias: z.string().optional().or(z.literal('')),
   observacoes: z.string().optional().or(z.literal('')),
 })
 
@@ -43,7 +44,6 @@ export default function EditarPacientePage() {
   useEffect(() => {
     if (!id) return
     async function carregar() {
-      const supabase = createClient()
       const { data } = await supabase.from('pacientes').select('*').eq('id', id).single()
       if (!data) {
         router.back()
@@ -56,7 +56,8 @@ export default function EditarPacientePage() {
         telefone: data.telefone ?? '',
         cpf: data.cpf ?? '',
         data_nascimento: data.data_nascimento ?? '',
-        email: data.email ?? '',
+        endereco: data.endereco ?? '',
+        alergias: data.alergias ?? '',
         observacoes: data.observacoes ?? '',
       })
       setCarregando(false)
@@ -68,7 +69,6 @@ export default function EditarPacientePage() {
     setSalvando(true)
     setErro(null)
 
-    const supabase = createClient()
     const { error } = await supabase
       .from('pacientes')
       .update({
@@ -76,7 +76,8 @@ export default function EditarPacientePage() {
         telefone: data.telefone || null,
         cpf: data.cpf || null,
         data_nascimento: data.data_nascimento || null,
-        email: data.email || null,
+        endereco: data.endereco || null,
+        alergias: data.alergias || null,
         observacoes: data.observacoes || null,
       })
       .eq('id', id)
@@ -92,7 +93,6 @@ export default function EditarPacientePage() {
 
   async function excluirPaciente() {
     setExcluindo(true)
-    const supabase = createClient()
     await supabase.from('pacientes').delete().eq('id', id)
     router.push('/pacientes')
   }
@@ -156,9 +156,10 @@ export default function EditarPacientePage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
             <input
-              {...register('telefone')}
+              {...register('telefone', {
+                onChange: (e) => setValue('telefone', formatarTelefone(e.target.value)),
+              })}
               type="tel"
-              onChange={(e) => setValue('telefone', formatarTelefone(e.target.value))}
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
@@ -173,10 +174,11 @@ export default function EditarPacientePage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
             <input
-              {...register('cpf')}
+              {...register('cpf', {
+                onChange: (e) => setValue('cpf', formatarCPF(e.target.value)),
+              })}
               type="text"
               maxLength={14}
-              onChange={(e) => setValue('cpf', formatarCPF(e.target.value))}
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
@@ -193,13 +195,23 @@ export default function EditarPacientePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
             <input
-              {...register('email')}
-              type="email"
+              {...register('endereco')}
+              type="text"
+              placeholder="Rua, número, bairro, cidade..."
               className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
-            {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Alergias</label>
+            <textarea
+              {...register('alergias')}
+              rows={2}
+              placeholder="Ex: Dipirona, Penicilina, látex..."
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+            />
           </div>
 
           <div>

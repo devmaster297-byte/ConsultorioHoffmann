@@ -1,6 +1,6 @@
 // src/lib/hooks/useFinanceiroPaciente.ts
-import { useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useCallback, useEffect } from 'react'
+import { supabase } from '@/lib/supabase-browser'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -50,9 +50,6 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     if (!pacienteId || !clinicaId) return
     setCarregando(true)
 
-    const supabase = createClient()
-
-    // Buscar lançamentos de receita do paciente
     const { data: lancsRaw } = await supabase
       .from('financeiro_lancamentos')
       .select('id, descricao, valor_total, num_parcelas, created_at, atendimento_id')
@@ -81,7 +78,6 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
 
     const lancIds = lancs.map((l) => l.id)
 
-    // Buscar TODAS as parcelas do lançamento
     const { data: parcelasRaw } = await supabase
       .from('financeiro_parcelas')
       .select('id, lancamento_id, valor, valor_pago, data_pagamento, status, numero')
@@ -107,15 +103,14 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     const lancamentosCompletos: LancamentoPaciente[] = lancs.map((l) => {
       const parcsDoLanc = parcelasPorLanc[l.id] ?? []
 
-      // Valor pago = soma de todas as parcelas com status pago
-      // (cada entrada na lista de pagamentos é uma parcela separada)
+      // FIX: incluir pago_parcial no cálculo de valor pago
       const valorPago = parcsDoLanc
-        .filter((p) => p.status === 'pago')
-        .reduce((acc, p) => acc + (p.valor_pago ?? p.valor), 0)
+        .filter((p) => p.status === 'pago' || p.status === 'pago_parcial')
+        .reduce((acc, p) => acc + (p.valor_pago ?? 0), 0)
 
-      // Cada parcela paga = um pagamento individual no histórico
+      // Pagamentos no histórico: parcelas pagas com data
       const pgtos: PagamentoRegistrado[] = parcsDoLanc
-        .filter((p) => p.status === 'pago' && p.data_pagamento)
+        .filter((p) => (p.status === 'pago' || p.status === 'pago_parcial') && p.data_pagamento)
         .map((p) => ({
           id: p.id,
           lancamento_id: l.id,
@@ -159,12 +154,14 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     setUltimaAtualizacao(new Date().toLocaleTimeString('pt-BR'))
   }, [pacienteId, clinicaId])
 
+  useEffect(() => { carregar() }, [carregar])
+
   return { lancamentos, pagamentos, resumo, carregando, ultimaAtualizacao, recarregar: carregar }
 }
 
 // ─── Registrar Pagamento ──────────────────────────────────────────────────────
 // Cada pagamento cria uma NOVA parcela com status 'pago'.
-// Isso preserva o histórico completo — cada entrada é imutável.
+// Isso preserva o histórico — cada entrada é imutável.
 
 export interface RegistrarPagamentoInput {
   clinicaId: string
@@ -179,9 +176,8 @@ export interface RegistrarPagamentoInput {
 export async function registrarPagamentoPaciente(
   input: RegistrarPagamentoInput
 ): Promise<{ sucesso: boolean; erro?: string }> {
-  const supabase = createClient()
 
-  // Verificar saldo disponível
+  // Buscar todas as parcelas do lançamento
   const { data: parcelasRaw } = await supabase
     .from('financeiro_parcelas')
     .select('id, valor, valor_pago, status, numero')
@@ -192,10 +188,10 @@ export async function registrarPagamentoPaciente(
     id: string; valor: number; valor_pago: number | null; status: string; numero: number
   }>
 
-  // Total já pago (apenas parcelas com status pago)
+  // FIX: incluir pago_parcial no total já pago
   const totalJaPago = parcelas
-    .filter((p) => p.status === 'pago')
-    .reduce((acc, p) => acc + (p.valor_pago ?? p.valor), 0)
+    .filter((p) => p.status === 'pago' || p.status === 'pago_parcial')
+    .reduce((acc, p) => acc + (p.valor_pago ?? 0), 0)
 
   // Valor total do lançamento
   const { data: lancRaw } = await supabase
@@ -207,17 +203,16 @@ export async function registrarPagamentoPaciente(
   const valorTotal = (lancRaw as { valor_total: number } | null)?.valor_total ?? 0
   const saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
 
-  if (saldoDisponivel <= 0) {
+  if (saldoDisponivel <= 0.01) {
     return { sucesso: false, erro: 'Este lançamento já está totalmente pago' }
   }
 
-  // Valor a registrar — limita ao saldo disponível
+  // Limita ao saldo disponível (evita sobrepagar)
   const valorRegistrar = Math.min(input.valor, saldoDisponivel)
 
   // Próximo número de parcela
   const proximoNumero = parcelas.length + 1
 
-  // Criar nova parcela para este pagamento
   const { error } = await supabase
     .from('financeiro_parcelas')
     .insert({
@@ -237,12 +232,10 @@ export async function registrarPagamentoPaciente(
 }
 
 // ─── Excluir Pagamento ────────────────────────────────────────────────────────
-// Remove a parcela completamente (cada pagamento é uma parcela própria)
 
 export async function excluirPagamentoParcela(
   parcelaId: string
 ): Promise<{ sucesso: boolean; erro?: string }> {
-  const supabase = createClient()
 
   const { error } = await supabase
     .from('financeiro_parcelas')

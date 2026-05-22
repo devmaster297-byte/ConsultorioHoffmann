@@ -23,7 +23,7 @@ export function RadiografiasAba({ pacienteId }: { pacienteId: string }) {
         </p>
         <div className="flex items-center gap-2">
           {radiografias.length > 0 && (
-            <Link href={`/pacientes/${pacienteId}/radiografias`}
+            <Link href={`/radiografias?paciente=${pacienteId}`}
               className="text-xs text-blue-600 font-medium"
             >
               Ver todas →

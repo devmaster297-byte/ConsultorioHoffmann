@@ -3,13 +3,25 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Plus, Check, X, Trash2, ChevronRight, Clock,
-  RefreshCw, DollarSign,
-} from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { Plus, Check, X, Trash2, RefreshCw, DollarSign, Clock } from 'lucide-react'
+import { supabase } from '@/lib/supabase-browser'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { registrarPagamentoPaciente, excluirPagamentoParcela } from '@/lib/hooks/useFinanceiroPaciente'
+
+// ─── Prefixo de identificação ────────────────────────────────────────────────
+// FIX CRÍTICO: Em vez de buscar o lançamento por valor_total (que colide quando
+// dois orçamentos têm o mesmo valor), codificamos o ID do orçamento na descrição
+// do lançamento. Formato: "[orc:UUID] Procedimento1, Procedimento2"
+// Isso garante lookup exato por UUID mesmo sem adicionar coluna ao banco.
+
+const ORC_PREFIX = (orcId: string) => `[orc:${orcId}]`
+const DESCRICAO_LANCAMENTO = (orc: Orcamento): string =>
+  `${ORC_PREFIX(orc.id)} ${orc.itens.map((i) => i.procedimento_nome).join(', ')}`
+
+function extrairOrcamentoIdDaDescricao(descricao: string): string | null {
+  const match = descricao.match(/^\[orc:([a-f0-9-]{36})\]/)
+  return match ? match[1] : null
+}
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -39,10 +51,9 @@ interface Pagamento {
   forma_pagamento: string | null
 }
 
-interface LancamentoSimplificado {
-  id: string
-  descricao: string
-  valor_total: number
+interface OrcamentoComSaldo {
+  orcamento: Orcamento
+  lancamentoId: string | null
   valor_pago: number
   valor_pendente: number
 }
@@ -54,6 +65,12 @@ interface ResumoFinanceiro {
 }
 
 // ─── Configurações ────────────────────────────────────────────────────────────
+
+const DENTISTAS = [
+  { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { key: 'eduardo', nome: 'Drº Eduardo Corteletti', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
+  { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700 border-rose-200'      },
+]
 
 const FORMAS = [
   { id: 'dinheiro',       label: 'Dinheiro',     emoji: '💵' },
@@ -74,46 +91,101 @@ const STATUS_CONFIG = {
   recusado: { label: 'Recusado', bg: '#FEE2E2', color: '#991B1B', Icon: X    },
 }
 
-// ─── Modal Registrar Pagamento ─────────────────────────────────────────────────
+// ─── Modal Registrar Pagamento ────────────────────────────────────────────────
 
 function ModalRegistrarPagamento({
-  pacienteId, clinicaId, lancamentos, lancamentoPreSelecionado, onFechar, onSucesso,
+  pacienteId, clinicaId, orcamentoComSaldo, onFechar, onSucesso,
 }: {
   pacienteId: string
   clinicaId: string
-  lancamentos: LancamentoSimplificado[]
-  lancamentoPreSelecionado?: string
+  orcamentoComSaldo: OrcamentoComSaldo
   onFechar: () => void
   onSucesso: () => void
 }) {
   const hoje = new Date().toISOString().split('T')[0]
-  const [lancamentoId, setLancamentoId] = useState(lancamentoPreSelecionado ?? '')
-  const [valor, setValor] = useState('')
+  const { orcamento, valor_pendente } = orcamentoComSaldo
+
+  const [valor, setValor] = useState(valor_pendente.toFixed(2))
   const [forma, setForma] = useState('pix')
   const [data, setData] = useState(hoje)
   const [observacao, setObservacao] = useState('')
+  const [dentistaKey, setDentistaKey] = useState<'rosieli' | 'eduardo' | 'pamela'>('rosieli')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const lancSelecionado = lancamentos.find((l) => l.id === lancamentoId)
+  // FIX: buscar lançamento por prefixo "[orc:UUID]" na descrição — lookup exato por ID
+  async function getOuCriarLancamento(): Promise<string | null> {
+    const prefixo = ORC_PREFIX(orcamento.id)
 
-  useEffect(() => {
-    if (lancSelecionado && !valor) {
-      setValor(lancSelecionado.valor_pendente.toFixed(2))
+    const { data: existente } = await supabase
+      .from('financeiro_lancamentos')
+      .select('id')
+      .eq('clinica_id', clinicaId)
+      .eq('paciente_id', pacienteId)
+      .eq('tipo', 'receita')
+      .ilike('descricao', `${prefixo}%`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existente) {
+      const lancId = (existente as { id: string; descricao?: string } & Record<string, unknown>).id
+      // Atualizar descrição para incluir prefixo do dentista, se não tiver
+      const { data: lancAtual } = await supabase
+        .from('financeiro_lancamentos').select('descricao').eq('id', lancId).single()
+      const descAtual = (lancAtual as { descricao: string } | null)?.descricao ?? ''
+      if (!descAtual.includes(`[${dentistaKey}]`)) {
+        // Remove prefixo antigo de dentista se houver e adiciona o novo
+        const novaDesc = descAtual.replace(/\[[a-z]+\](?!\s*[a-f0-9])/, '').replace(/^(\[orc:[^\]]+\])/, `$1[${dentistaKey}]`)
+        await supabase.from('financeiro_lancamentos').update({ descricao: novaDesc }).eq('id', lancId)
+      }
+      return lancId
     }
-  }, [lancamentoId]) // eslint-disable-line
+
+    // Não existe — criar com prefixo do orçamento + prefixo do dentista
+    const descricaoCompleta = `${ORC_PREFIX(orcamento.id)}[${dentistaKey}] ${orcamento.itens.map(i => i.procedimento_nome).join(', ')}`
+    const { data: novoLanc, error } = await supabase
+      .from('financeiro_lancamentos')
+      .insert({
+        clinica_id: clinicaId,
+        paciente_id: pacienteId,
+        tipo: 'receita',
+        descricao: descricaoCompleta,
+        valor_total: orcamento.valor_total,
+        num_parcelas: 1,
+      })
+      .select('id')
+      .single()
+
+    if (error || !novoLanc) return null
+
+    return (novoLanc as { id: string }).id
+  }
 
   async function handleSalvar() {
-    if (!lancamentoId) { setErro('Selecione um lançamento'); return }
     const valorNum = parseFloat(valor)
     if (!valorNum || valorNum <= 0) { setErro('Informe um valor válido'); return }
+    if (valorNum > valor_pendente + 0.01) {
+      setErro(`Valor maior que o saldo pendente (${formatarMoeda(valor_pendente)})`)
+      return
+    }
+
     setSalvando(true)
     setErro(null)
+
+    const lancamentoId = await getOuCriarLancamento()
+    if (!lancamentoId) {
+      setErro('Erro ao preparar cobrança. Tente novamente.')
+      setSalvando(false)
+      return
+    }
+
     const resultado = await registrarPagamentoPaciente({
       clinicaId, pacienteId, lancamentoId,
       valor: valorNum, formaPagamento: forma,
       dataPagamento: data, observacao: observacao || undefined,
     })
+
     if (!resultado.sucesso) {
       setErro(resultado.erro ?? 'Erro ao registrar')
       setSalvando(false)
@@ -122,132 +194,142 @@ function ModalRegistrarPagamento({
     onSucesso()
   }
 
-  const lancsPendentes = lancamentos.filter((l) => l.valor_pendente > 0)
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-end bg-black/50"
       onClick={(e) => { if (e.target === e.currentTarget) onFechar() }}
     >
       <div className="w-full bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: 'calc(100dvh - 80px)' }}>
-        {/* Header fixo */}
+        {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900">Registrar Pagamento</h2>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Registrar Pagamento</h2>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">
+              {orcamento.itens.map((i) => i.procedimento_nome).join(', ')}
+            </p>
+          </div>
           <button onClick={onFechar} className="p-1 text-gray-400 text-xl leading-none">✕</button>
         </div>
 
-        {/* Corpo scrollável */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Referente a
-            </label>
-            {lancsPendentes.length === 0 ? (
-              <div className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
-                ✓ Todos os lançamentos estão quitados
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {lancsPendentes.map((l) => (
-                  <button key={l.id} type="button"
-                    onClick={() => { setLancamentoId(l.id); setValor(l.valor_pendente.toFixed(2)) }}
-                    className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
-                      lancamentoId === l.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{l.descricao}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Total: {formatarMoeda(l.valor_total)} · Pago: {formatarMoeda(l.valor_pago)}
-                      </p>
-                    </div>
-                    <div className="ml-3 text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-red-600">{formatarMoeda(l.valor_pendente)}</p>
-                      <p className="text-xs text-gray-400">pendente</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* Resumo */}
+          <div className="rounded-xl bg-blue-50 px-4 py-3 flex justify-between items-center">
+            <div>
+              <p className="text-xs text-blue-500 font-medium">Total do orçamento</p>
+              <p className="text-base font-bold text-blue-800">{formatarMoeda(orcamento.valor_total)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-red-400 font-medium">Saldo pendente</p>
+              <p className="text-base font-bold text-red-600">{formatarMoeda(valor_pendente)}</p>
+            </div>
           </div>
 
-          {lancamentoId && (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Valor (R$) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-400">R$</span>
-                  <input type="number" step="0.01" min="0.01" value={valor}
-                    onChange={(e) => setValor(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3.5 text-base font-bold text-gray-900 focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                {lancSelecionado && (
-                  <button type="button"
-                    onClick={() => setValor(lancSelecionado.valor_pendente.toFixed(2))}
-                    className="mt-1 text-xs text-blue-600 font-medium"
-                  >
-                    Usar total pendente ({formatarMoeda(lancSelecionado.valor_pendente)})
-                  </button>
-                )}
-              </div>
+          {/* Valor */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Valor (R$) *
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-400">R$</span>
+              <input type="number" step="0.01" min="0.01" value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3.5 text-base font-bold text-gray-900 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <button type="button"
+              onClick={() => setValor(valor_pendente.toFixed(2))}
+              className="mt-1 text-xs text-blue-600 font-medium"
+            >
+              Usar total pendente ({formatarMoeda(valor_pendente)})
+            </button>
+          </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Forma de Pagamento
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {FORMAS.map((f) => (
-                    <button key={f.id} type="button" onClick={() => setForma(f.id)}
-                      className={`flex flex-col items-center gap-1 rounded-xl border py-2.5 px-1 transition-all ${
-                        forma === f.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                      }`}
-                    >
-                      <span className="text-xl">{f.emoji}</span>
-                      <span className={`text-xs font-medium text-center leading-tight ${
-                        forma === f.id ? 'text-blue-700' : 'text-gray-600'
-                      }`}>{f.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Dentista */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Dentista
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {DENTISTAS.map((d) => (
+                <button key={d.key} type="button" onClick={() => setDentistaKey(d.key as 'rosieli' | 'eduardo' | 'pamela')}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${
+                    dentistaKey === d.key
+                      ? 'border-blue-500 bg-blue-50 font-semibold'
+                      : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    dentistaKey === d.key ? 'bg-blue-500 text-white' : d.cor.split(' ').slice(0,2).join(' ')
+                  }`}>
+                    {d.initials}
+                  </div>
+                  <span className={`text-xs ${dentistaKey === d.key ? 'text-blue-800' : 'text-gray-600'}`}>
+                    {d.nome}
+                  </span>
+                  {dentistaKey === d.key && (
+                    <span className="ml-auto text-blue-500 text-sm">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Data do Pagamento
-                </label>
-                <input type="date" value={data} max={hoje}
-                  onChange={(e) => setData(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
+          {/* Forma de pagamento */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Forma de Pagamento
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {FORMAS.map((f) => (
+                <button key={f.id} type="button" onClick={() => setForma(f.id)}
+                  className={`flex flex-col items-center gap-1 rounded-xl border py-2.5 px-1 transition-all ${
+                    forma === f.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                  }`}
+                >
+                  <span className="text-xl">{f.emoji}</span>
+                  <span className={`text-xs font-medium text-center leading-tight ${
+                    forma === f.id ? 'text-blue-700' : 'text-gray-600'
+                  }`}>{f.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Observações (opcional)
-                </label>
-                <input type="text" placeholder="Ex: Entrada, parcela 1/3..."
-                  value={observacao} onChange={(e) => setObservacao(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-            </>
-          )}
+          {/* Data */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Data do Pagamento
+            </label>
+            <input type="date" value={data} max={hoje}
+              onChange={(e) => setData(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Observações */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Observações (opcional)
+            </label>
+            <input type="text" placeholder="Ex: Entrada, parcela 1/3..."
+              value={observacao} onChange={(e) => setObservacao(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
 
           {erro && (
             <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{erro}</div>
           )}
         </div>
 
-        {/* Botões fixos na base */}
-        <div className="flex-shrink-0 px-5 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white" style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1rem))' }}>
+        <div
+          className="flex-shrink-0 px-5 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white"
+          style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1rem))' }}
+        >
           <button type="button" onClick={onFechar}
             className="rounded-xl bg-gray-100 py-3.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
           >Cancelar</button>
-          <button type="button" onClick={handleSalvar}
-            disabled={salvando || !lancamentoId}
+          <button type="button" onClick={handleSalvar} disabled={salvando}
             className="rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white disabled:opacity-50 active:bg-blue-700"
           >{salvando ? 'Salvando...' : '✓ Registrar'}</button>
         </div>
@@ -256,7 +338,7 @@ function ModalRegistrarPagamento({
   )
 }
 
-// ─── Modal Confirmar Exclusão ──────────────────────────────────────────────────
+// ─── Modal Confirmar Exclusão ─────────────────────────────────────────────────
 
 function ModalConfirmarExclusao({
   mensagem, onConfirmar, onCancelar, carregando,
@@ -291,12 +373,11 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState('')
 
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([])
+  const [orcamentosComSaldo, setOrcamentosComSaldo] = useState<OrcamentoComSaldo[]>([])
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([])
-  const [lancamentos, setLancamentos] = useState<LancamentoSimplificado[]>([])
   const [resumo, setResumo] = useState<ResumoFinanceiro>({ totalOrcado: 0, totalPago: 0, saldoDevedor: 0 })
 
-  const [modalPagamento, setModalPagamento] = useState(false)
-  const [lancamentoModalId, setLancamentoModalId] = useState<string | undefined>()
+  const [modalOrcamento, setModalOrcamento] = useState<OrcamentoComSaldo | null>(null)
   const [exclusaoInfo, setExclusaoInfo] = useState<{
     tipo: 'orcamento' | 'pagamento'
     id: string
@@ -306,10 +387,10 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
   const [excluindo, setExcluindo] = useState(false)
 
   // ── Carregar ──────────────────────────────────────────────────────────────────
+
   const carregar = useCallback(async () => {
     if (!pacienteId || !clinicaId) return
     setCarregando(true)
-    const supabase = createClient()
 
     // Orçamentos
     const { data: orcsRaw } = await supabase
@@ -332,7 +413,11 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       const itensPorOrc: Record<string, ItemOrcamento[]> = {}
       itensDB.forEach((item) => {
         if (!itensPorOrc[item.orcamento_id]) itensPorOrc[item.orcamento_id] = []
-        itensPorOrc[item.orcamento_id].push({ id: item.id, procedimento_nome: item.procedimento_nome, valor: Number(item.valor) })
+        itensPorOrc[item.orcamento_id].push({
+          id: item.id,
+          procedimento_nome: item.procedimento_nome,
+          valor: Number(item.valor),
+        })
       })
       orcamentosCompletos = orcsDB.map((o) => ({
         ...o,
@@ -341,21 +426,36 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       }))
     }
 
-    // Lançamentos + parcelas
+    // FIX: Lançamentos buscados por prefixo do orçamento na descrição
+    // Monta um mapa: orcamento_id → lancamento
+    const lancPorOrcId: Record<string, { id: string; descricao: string; valor_total: number }> = {}
+    const lancPagoMap: Record<string, number> = {}
+    const pagamentosColetados: Pagamento[] = []
+
+    // FIX: Busca TODOS os lançamentos de receita do paciente (orçamentos + avulsos)
+    // Antes, a query ficava dentro do `if (orcamentosCompletos.length > 0)`, o que
+    // fazia os pagamentos avulsos serem completamente ignorados quando não havia orçamentos.
     const { data: lancsRaw } = await supabase
-      .from('financeiro_lancamentos').select('id, descricao, valor_total')
-      .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId).eq('tipo', 'receita')
+      .from('financeiro_lancamentos')
+      .select('id, descricao, valor_total')
+      .eq('clinica_id', clinicaId)
+      .eq('paciente_id', pacienteId)
+      .eq('tipo', 'receita')
       .order('created_at', { ascending: false })
 
     const lancsDB = (lancsRaw ?? []) as Array<{ id: string; descricao: string; valor_total: number }>
 
-    let totalOrcado = 0
-    let totalPago = 0
-    const lancamentosProcessados: LancamentoSimplificado[] = []
-    const pagamentosColetados: Pagamento[] = []
+    // Separar lançamentos de orçamento (prefixo [orc:UUID]) dos avulsos
+    for (const lanc of lancsDB) {
+      const orcId = extrairOrcamentoIdDaDescricao(lanc.descricao)
+      if (orcId) {
+        lancPorOrcId[orcId] = lanc
+      }
+    }
 
-    if (lancsDB.length > 0) {
-      const lancIds = lancsDB.map((l) => l.id)
+    // Buscar parcelas pagas de todos os lançamentos (orçamentos + avulsos)
+    const lancIds = lancsDB.map((l) => l.id)
+    if (lancIds.length > 0) {
       const { data: parcelasRaw } = await supabase
         .from('financeiro_parcelas')
         .select('id, lancamento_id, valor, valor_pago, data_pagamento, status')
@@ -367,44 +467,46 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
         valor_pago: number | null; data_pagamento: string | null; status: string
       }>
 
-      const parcelasPorLanc: Record<string, typeof parcelasDB> = {}
       parcelasDB.forEach((p) => {
-        if (!parcelasPorLanc[p.lancamento_id]) parcelasPorLanc[p.lancamento_id] = []
-        parcelasPorLanc[p.lancamento_id].push(p)
-      })
-
-      lancsDB.forEach((l) => {
-        const parcs = parcelasPorLanc[l.id] ?? []
-        const valorPagoLanc = parcs
-          .filter((p) => p.status === 'pago' || p.status === 'pago_parcial')
-          .reduce((acc, p) => acc + (p.valor_pago ?? 0), 0)
-
-        totalOrcado += l.valor_total
-        totalPago += valorPagoLanc
-
-        lancamentosProcessados.push({
-          id: l.id, descricao: l.descricao, valor_total: l.valor_total,
-          valor_pago: valorPagoLanc,
-          valor_pendente: Math.max(0, l.valor_total - valorPagoLanc),
-        })
-
-        parcs
-          .filter((p) => (p.status === 'pago' || p.status === 'pago_parcial') && p.data_pagamento)
-          .forEach((p) => {
+        if (p.status === 'pago' || p.status === 'pago_parcial') {
+          lancPagoMap[p.lancamento_id] = (lancPagoMap[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
+          if (p.data_pagamento) {
+            const lanc = lancsDB.find((l) => l.id === p.lancamento_id)
             pagamentosColetados.push({
-              id: p.id, lancamento_id: l.id, descricao_lancamento: l.descricao,
+              id: p.id, lancamento_id: p.lancamento_id,
+              descricao_lancamento: lanc?.descricao ?? '',
               valor_pago: p.valor_pago ?? p.valor,
-              data_pagamento: p.data_pagamento!,
+              data_pagamento: p.data_pagamento,
               forma_pagamento: null,
             })
-          })
+          }
+        }
       })
     }
+
+    // Cruzar orçamentos com saldo (usando mapa por ID do orçamento)
+    let totalOrcado = 0
+    let totalPago = 0
+
+    const comSaldo: OrcamentoComSaldo[] = orcamentosCompletos.map((orc) => {
+      const lanc = lancPorOrcId[orc.id]
+      const valorPago = lanc ? (lancPagoMap[lanc.id] ?? 0) : 0
+      if (orc.status === 'aprovado') {
+        totalOrcado += orc.valor_total
+        totalPago += valorPago
+      }
+      return {
+        orcamento: orc,
+        lancamentoId: lanc?.id ?? null,
+        valor_pago: valorPago,
+        valor_pendente: Math.max(0, orc.valor_total - valorPago),
+      }
+    })
 
     pagamentosColetados.sort((a, b) => b.data_pagamento.localeCompare(a.data_pagamento))
 
     setOrcamentos(orcamentosCompletos)
-    setLancamentos(lancamentosProcessados)
+    setOrcamentosComSaldo(comSaldo)
     setPagamentos(pagamentosColetados)
     setResumo({ totalOrcado, totalPago, saldoDevedor: Math.max(0, totalOrcado - totalPago) })
     setUltimaAtualizacao(new Date().toLocaleTimeString('pt-BR'))
@@ -416,47 +518,32 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
   // ── Ações ─────────────────────────────────────────────────────────────────────
 
   async function mudarStatusOrcamento(id: string, status: StatusOrcamento) {
-    await createClient().from('orcamentos').update({ status }).eq('id', id)
+    await supabase.from('orcamentos').update({ status }).eq('id', id)
     setOrcamentos((prev) => prev.map((o) => o.id === id ? { ...o, status } : o))
-  }
-
-  function gerarCobranca(orc: Orcamento) {
-    const params = new URLSearchParams({
-      paciente: pacienteId, orcamento: orc.id,
-      valor: orc.valor_total.toString(),
-      descricao: `Orçamento – ${orc.itens.map((i) => i.procedimento_nome).join(', ')}`,
-    })
-    router.push(`/financeiro/lancamento?${params}`)
+    setOrcamentosComSaldo((prev) => prev.map((ocs) =>
+      ocs.orcamento.id === id ? { ...ocs, orcamento: { ...ocs.orcamento, status } } : ocs
+    ))
   }
 
   async function excluirOrcamento(id: string) {
     setExcluindo(true)
-    const supabase = createClient()
-
-    // Buscar o orçamento para saber o valor
     const orc = orcamentos.find((o) => o.id === id)
     if (orc) {
-      // Buscar lançamentos financeiros com mesmo valor vinculados ao paciente
+      // FIX: buscar lançamento pelo prefixo UUID, não por valor_total
+      const prefixo = ORC_PREFIX(orc.id)
       const { data: lancsVinculados } = await supabase
-        .from('financeiro_lancamentos')
-        .select('id')
-        .eq('clinica_id', clinicaId)
-        .eq('paciente_id', pacienteId)
-        .eq('valor_total', orc.valor_total)
-        .eq('tipo', 'receita')
+        .from('financeiro_lancamentos').select('id')
+        .eq('clinica_id', clinicaId).eq('paciente_id', pacienteId)
+        .ilike('descricao', `${prefixo}%`)
 
       if (lancsVinculados && lancsVinculados.length > 0) {
         const lancIds = (lancsVinculados as { id: string }[]).map((l) => l.id)
-        // Apagar parcelas e lançamentos vinculados
         await supabase.from('financeiro_parcelas').delete().in('lancamento_id', lancIds)
         await supabase.from('financeiro_lancamentos').delete().in('id', lancIds)
       }
     }
-
-    // Apagar itens e o orçamento
     await supabase.from('orcamento_itens').delete().eq('orcamento_id', id)
     await supabase.from('orcamentos').delete().eq('id', id)
-
     setExclusaoInfo(null)
     setExcluindo(false)
     await carregar()
@@ -488,13 +575,13 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
         <div>
           <h3 className="font-bold text-gray-900">Financeiro do Paciente</h3>
           {ultimaAtualizacao && (
-            <p className="text-xs text-gray-400 mt-0.5">Última atualização: {ultimaAtualizacao}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Atualizado às {ultimaAtualizacao}</p>
           )}
         </div>
         <button onClick={carregar}
           className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white active:bg-blue-700"
         >
-          <RefreshCw className="h-3.5 w-3.5" /> Atualizar Dados
+          <RefreshCw className="h-3.5 w-3.5" /> Atualizar
         </button>
       </div>
 
@@ -502,7 +589,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-white rounded-2xl p-3 shadow-sm text-center">
           <p className="text-base font-bold text-blue-600">{formatarMoeda(resumo.totalOrcado)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Total Orçado</p>
+          <p className="text-xs text-gray-400 mt-0.5">Aprovado</p>
         </div>
         <div className="bg-white rounded-2xl p-3 shadow-sm text-center">
           <p className="text-base font-bold text-green-600">{formatarMoeda(resumo.totalPago)}</p>
@@ -512,11 +599,11 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
           <p className={`text-base font-bold ${resumo.saldoDevedor > 0 ? 'text-red-600' : 'text-green-600'}`}>
             {formatarMoeda(resumo.saldoDevedor)}
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">Saldo Devedor</p>
+          <p className="text-xs text-gray-400 mt-0.5">Saldo</p>
         </div>
       </div>
 
-      {/* Sub-abas + botão contextual */}
+      {/* Sub-abas */}
       <div className="flex items-center gap-2">
         <div className="flex flex-1 gap-1">
           <button onClick={() => setSubAba('orcamentos')}
@@ -535,17 +622,11 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
           </button>
         </div>
 
-        {subAba === 'orcamentos' ? (
+        {subAba === 'orcamentos' && (
           <button onClick={() => router.push(`/pacientes/${pacienteId}/orcamentos`)}
             className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:bg-blue-700 flex-shrink-0"
           >
             <Plus className="h-3.5 w-3.5" /> Novo Orçamento
-          </button>
-        ) : (
-          <button onClick={() => { setLancamentoModalId(undefined); setModalPagamento(true) }}
-            className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:bg-blue-700 flex-shrink-0"
-          >
-            <Plus className="h-3.5 w-3.5" /> Registrar Pagamento
           </button>
         )}
       </div>
@@ -562,10 +643,9 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
           ) : (
             orcamentos.map((orc) => {
               const cfg = STATUS_CONFIG[orc.status]
-              // Tentar encontrar lançamento vinculado por valor
-              const lancOrc = lancamentos.find((l) => l.valor_total === orc.valor_total)
-              const valorPago = lancOrc?.valor_pago ?? 0
-              const saldo = orc.valor_total - valorPago
+              const ocs = orcamentosComSaldo.find((o) => o.orcamento.id === orc.id)
+              const valorPago = ocs?.valor_pago ?? 0
+              const saldo = ocs?.valor_pendente ?? orc.valor_total
               const pctPago = orc.valor_total > 0
                 ? Math.min(100, Math.round((valorPago / orc.valor_total) * 100))
                 : 0
@@ -585,7 +665,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-bold text-gray-900">{formatarMoeda(orc.valor_total)}</p>
-                      {saldo > 0 && (
+                      {orc.status === 'aprovado' && saldo > 0 && (
                         <p className="text-xs text-red-500">Saldo: {formatarMoeda(saldo)}</p>
                       )}
                     </div>
@@ -604,68 +684,67 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                     )}
                   </div>
 
-                  {/* Barra de progresso */}
-                  <div className="px-4 pb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-blue-500" style={{ width: `${pctPago}%` }} />
+                  {/* Barra de progresso (aprovado) */}
+                  {orc.status === 'aprovado' && (
+                    <div className="px-4 pb-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${pctPago}%` }} />
+                        </div>
+                        <span className="text-xs text-gray-400">{pctPago}%</span>
                       </div>
-                      <span className="text-xs text-gray-400">{pctPago}%</span>
+                      <p className="text-xs text-gray-400">
+                        Pago: <span className="font-semibold text-green-600">{formatarMoeda(valorPago)}</span>
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-400">
-                      Pago: <span className="font-semibold text-green-600">{formatarMoeda(valorPago)}</span>
-                    </p>
-                  </div>
+                  )}
 
-                  {/* Ações por status */}
+                  {/* Ações — pendente */}
                   {orc.status === 'pendente' && (
                     <div className="border-t border-gray-100 grid grid-cols-3 divide-x divide-gray-100">
-                      <button
-                        onClick={async () => { await mudarStatusOrcamento(orc.id, 'aprovado'); gerarCobranca({ ...orc, status: 'aprovado' }) }}
+                      <button onClick={() => mudarStatusOrcamento(orc.id, 'aprovado')}
                         className="flex items-center justify-center gap-1 py-3 text-sm font-semibold text-green-700 active:bg-green-50"
                       ><Check className="h-4 w-4" /> Aprovar</button>
-                      <button
-                        onClick={() => mudarStatusOrcamento(orc.id, 'recusado')}
+                      <button onClick={() => mudarStatusOrcamento(orc.id, 'recusado')}
                         className="flex items-center justify-center gap-1 py-3 text-sm font-medium text-red-500 active:bg-red-50"
                       ><X className="h-4 w-4" /> Recusar</button>
                       <button
-                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Esta ação não pode ser desfeita.` })}
+                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}?` })}
                         className="flex items-center justify-center py-3 text-gray-400 active:bg-gray-50"
                       ><Trash2 className="h-4 w-4" /></button>
                     </div>
                   )}
 
+                  {/* Ações — aprovado */}
                   {orc.status === 'aprovado' && (
                     <div className="border-t border-gray-100 flex divide-x divide-gray-100">
+                      {saldo > 0 ? (
+                        <button
+                          onClick={() => ocs && setModalOrcamento(ocs)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold text-blue-600 active:bg-blue-50"
+                        >
+                          <DollarSign className="h-4 w-4" /> Registrar Pagamento
+                        </button>
+                      ) : (
+                        <div className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold text-green-600">
+                          <Check className="h-4 w-4" /> Quitado
+                        </div>
+                      )}
                       <button
-                        onClick={() => {
-                          if (lancOrc && lancOrc.valor_pendente > 0) {
-                            setLancamentoModalId(lancOrc.id)
-                            setModalPagamento(true)
-                          } else {
-                            gerarCobranca(orc)
-                          }
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold text-blue-600 active:bg-blue-50"
-                      >
-                        <DollarSign className="h-4 w-4" />
-                        {lancOrc && lancOrc.valor_pendente > 0 ? 'Pagar' : 'Gerar Cobrança'}
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Esta ação não pode ser desfeita.` })}
+                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}?` })}
                         className="px-4 py-3 text-gray-400 active:bg-gray-50"
                       ><Trash2 className="h-4 w-4" /></button>
                     </div>
                   )}
 
+                  {/* Ações — recusado */}
                   {orc.status === 'recusado' && (
                     <div className="border-t border-gray-100 flex divide-x divide-gray-100">
                       <button onClick={() => mudarStatusOrcamento(orc.id, 'pendente')}
                         className="flex-1 py-3 text-sm font-medium text-gray-500 active:bg-gray-50"
                       >Reabrir</button>
                       <button
-                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}? Esta ação não pode ser desfeita.` })}
+                        onClick={() => setExclusaoInfo({ tipo: 'orcamento', id: orc.id, mensagem: `Excluir orçamento de ${formatarMoeda(orc.valor_total)}?` })}
                         className="px-4 py-3 text-gray-400 active:bg-gray-50"
                       ><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -684,6 +763,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
             <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
               <p className="text-4xl mb-2">💳</p>
               <p className="text-sm font-medium text-gray-500">Nenhum pagamento registrado</p>
+              <p className="text-xs text-gray-400 mt-1">Nenhum pagamento de orçamento ou avulso registrado</p>
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -691,26 +771,26 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
                 <div key={p.id}
                   className={`flex items-center gap-3 px-4 py-3 ${idx < pagamentos.length - 1 ? 'border-b border-gray-50' : ''}`}
                 >
-                  {/* Ícone */}
                   <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 text-lg">
                     {p.forma_pagamento ? (FORMA_EMOJI[p.forma_pagamento] ?? '💵') : '💵'}
                   </div>
-
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900">{formatarMoeda(p.valor_pago)}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {p.forma_pagamento ? FORMA_LABEL[p.forma_pagamento] : 'Pagamento'}
                       {' • '}{formatarData(p.data_pagamento)}
                     </p>
-                    <p className="text-xs text-gray-400 truncate">Ref. {p.descricao_lancamento}</p>
+                    {/* Mostra descrição do avulso (sem o prefixo [dentista]) */}
+                    {!extrairOrcamentoIdDaDescricao(p.descricao_lancamento) && p.descricao_lancamento && (
+                      <p className="text-xs text-blue-500 mt-0.5 truncate">
+                        {p.descricao_lancamento.replace(/^\[[a-z]+\]\s*/, '')}
+                      </p>
+                    )}
                   </div>
-
-                  {/* Excluir */}
                   <button
                     onClick={() => setExclusaoInfo({
                       tipo: 'pagamento', id: p.id, lancamentoId: p.lancamento_id,
-                      mensagem: `Excluir o pagamento de ${formatarMoeda(p.valor_pago)}? O saldo do lançamento será revertido.`,
+                      mensagem: `Excluir o pagamento de ${formatarMoeda(p.valor_pago)}? O saldo será revertido.`,
                     })}
                     className="text-xs font-semibold text-red-400 active:text-red-600 flex-shrink-0"
                   >Excluir</button>
@@ -722,13 +802,13 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
       )}
 
       {/* Modais */}
-      {modalPagamento && (
+      {modalOrcamento && (
         <ModalRegistrarPagamento
-          pacienteId={pacienteId} clinicaId={clinicaId}
-          lancamentos={lancamentos}
-          lancamentoPreSelecionado={lancamentoModalId}
-          onFechar={() => { setModalPagamento(false); setLancamentoModalId(undefined) }}
-          onSucesso={async () => { setModalPagamento(false); setLancamentoModalId(undefined); await carregar() }}
+          pacienteId={pacienteId}
+          clinicaId={clinicaId}
+          orcamentoComSaldo={modalOrcamento}
+          onFechar={() => setModalOrcamento(null)}
+          onSucesso={async () => { setModalOrcamento(null); await carregar() }}
         />
       )}
 

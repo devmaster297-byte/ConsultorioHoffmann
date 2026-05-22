@@ -7,7 +7,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft, ChevronDown, Search, UserRound } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { criarLancamento } from '@/lib/hooks/useFinanceiro'
 import { formatarMoeda } from '@/lib/utils'
@@ -64,20 +64,16 @@ function LancamentoContent() {
     'tipo',
   ])
 
-  // Pré-preencher campos vindos de orçamento ou atendimento
+  // Pré-preencher campos vindos de orçamento ou atendimento (com decode correto)
   useEffect(() => {
-    if (valorParam)    setValue('valor_total', valorParam)
+    if (valorParam)     setValue('valor_total', valorParam)
     if (descricaoParam) setValue('descricao', decodeURIComponent(descricaoParam))
   }, [valorParam, descricaoParam, setValue])
 
-  // Carregar paciente pré-selecionado e pré-preencher campos via query params
+  // Carregar paciente pré-selecionado
   useEffect(() => {
-    if (descricaoParam) setValue('descricao', descricaoParam)
-    if (valorParam)     setValue('valor_total', valorParam)
-
     if (!pacienteIdParam) return
     async function buscarPaciente() {
-      const supabase = createClient()
       const { data } = await supabase
         .from('pacientes')
         .select('id, nome')
@@ -86,7 +82,7 @@ function LancamentoContent() {
       if (data) setPacienteSelecionado(data)
     }
     buscarPaciente()
-  }, [pacienteIdParam, descricaoParam, valorParam])
+  }, [pacienteIdParam])
 
   // Gerar preview das parcelas
   useEffect(() => {
@@ -122,7 +118,6 @@ function LancamentoContent() {
       return
     }
     const timeout = setTimeout(async () => {
-      const supabase = createClient()
       const { data } = await supabase
         .from('pacientes')
         .select('id, nome')
