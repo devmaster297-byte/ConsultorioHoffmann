@@ -197,15 +197,45 @@ export async function registrarPagamentoPaciente(
     .filter((p) => p.status === 'pago')
     .reduce((acc, p) => acc + (p.valor_pago ?? p.valor), 0)
 
-  // Valor total do lançamento
+  // Valor total do lançamento (inclui descricao para extrair orc_id se necessário)
   const { data: lancRaw } = await supabase
     .from('financeiro_lancamentos')
-    .select('valor_total')
+    .select('valor_total, descricao')
     .eq('id', input.lancamentoId)
     .single()
 
-  const valorTotal = (lancRaw as { valor_total: number } | null)?.valor_total ?? 0
-  const saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
+  const lancamento = lancRaw as { valor_total: number; descricao: string } | null
+  let valorTotal = lancamento?.valor_total ?? 0
+  let saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
+
+  // ── Autocorreção: lançamento "pago" mas orçamento tem saldo restante ──────
+  // Ocorre quando o lançamento foi criado com valor_total menor que o orçamento.
+  // Nesse caso, lemos o valor real do orçamento vinculado e corrigimos o
+  // valor_total do lançamento silenciosamente antes de prosseguir.
+  if (saldoDisponivel <= 0 && lancamento?.descricao) {
+    const matchOrc = lancamento.descricao.match(/\[orc:([a-f0-9-]+)\]/i)
+    if (matchOrc) {
+      const orcId = matchOrc[1]
+      const { data: orcRaw } = await supabase
+        .from('orcamentos')
+        .select('valor_total')
+        .eq('id', orcId)
+        .single()
+
+      const valorOrcamento = (orcRaw as { valor_total: number } | null)?.valor_total ?? 0
+
+      if (valorOrcamento > totalJaPago) {
+        // Corrige o valor_total do lançamento para bater com o orçamento
+        await supabase
+          .from('financeiro_lancamentos')
+          .update({ valor_total: valorOrcamento })
+          .eq('id', input.lancamentoId)
+
+        valorTotal = valorOrcamento
+        saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
+      }
+    }
+  }
 
   if (saldoDisponivel <= 0) {
     return { sucesso: false, erro: 'Este lançamento já está totalmente pago' }
