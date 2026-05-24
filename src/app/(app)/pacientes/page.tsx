@@ -1,36 +1,51 @@
 // src/app/(app)/pacientes/page.tsx
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Search, Plus, UserX, AlertTriangle } from 'lucide-react'
-import { supabase } from '@/lib/supabase-browser'
+import { Search, Plus, UserX } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import { Paciente } from '@/lib/supabase/types'
 import { StatusFinanceiro, calcularStatusEmBatch } from '@/lib/hooks/usePacienteStatus'
 import { PacienteCard } from '@/components/pacientes/PacienteCard'
 import { useAuthStore } from '@/store/auth.store'
-import { useVencidosCount } from '@/lib/hooks/useVencidosCount'
 import { debounce } from '@/lib/utils'
+
+const PAGE_SIZE = 50
 
 export default function PacientesPage() {
   const { clinicaId } = useAuthStore()
-  const vencidosCount = useVencidosCount(clinicaId)
   const [busca, setBusca] = useState('')
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [statusMap, setStatusMap] = useState<Record<string, StatusFinanceiro>>({})
   const [carregando, setCarregando] = useState(true)
-  const [buscando, setBuscando] = useState(false)
+  const [carregandoMais, setCarregandoMais] = useState(false)
+  const [temMais, setTemMais] = useState(false)
 
-  const buscarPacientes = useCallback(
-    async (query: string) => {
+  // Refs para evitar closure desatualizado no IntersectionObserver
+  const buscaRef = useRef('')
+  const offsetRef = useRef(0)
+  const carregandoMaisRef = useRef(false)
+  const temMaisRef = useRef(false)
+
+  const carregar = useCallback(
+    async (query: string, offsetAtual: number, append: boolean) => {
       if (!clinicaId) return
-      setBuscando(true)
 
+      if (append) {
+        carregandoMaisRef.current = true
+        setCarregandoMais(true)
+      } else {
+        setCarregando(true)
+      }
+
+      const supabase = createClient()
       let req = supabase
         .from('pacientes')
         .select('*')
         .eq('clinica_id', clinicaId)
         .order('nome')
+        .range(offsetAtual, offsetAtual + PAGE_SIZE - 1)
 
       if (query.trim()) {
         req = req.or(
@@ -39,35 +54,83 @@ export default function PacientesPage() {
       }
 
       const { data } = await req
-      const lista = data ?? []
-      setPacientes(lista)
+      const lista = (data ?? []) as Paciente[]
 
-      if (lista.length > 0) {
-        const ids = lista.map((p: Paciente) => p.id)
-        const status = await calcularStatusEmBatch(ids, clinicaId)
-        setStatusMap(status)
+      if (append) {
+        setPacientes((prev) => [...prev, ...lista])
+      } else {
+        setPacientes(lista)
       }
 
-      setBuscando(false)
-      setCarregando(false)
+      const novoOffset = offsetAtual + lista.length
+      offsetRef.current = novoOffset
+
+      const ainda_tem_mais = lista.length === PAGE_SIZE
+      temMaisRef.current = ainda_tem_mais
+      setTemMais(ainda_tem_mais)
+
+      if (lista.length > 0) {
+        const ids = lista.map((p) => p.id)
+        const status = await calcularStatusEmBatch(ids, clinicaId)
+        setStatusMap((prev) => (append ? { ...prev, ...status } : status))
+      }
+
+      if (append) {
+        carregandoMaisRef.current = false
+        setCarregandoMais(false)
+      } else {
+        setCarregando(false)
+      }
     },
     [clinicaId]
   )
 
+  // Sentinel para scroll infinito
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0].isIntersecting &&
+          temMaisRef.current &&
+          !carregandoMaisRef.current
+        ) {
+          carregar(buscaRef.current, offsetRef.current, true)
+        }
+      },
+      { rootMargin: '300px' }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [carregar])
+
+  // Busca com debounce
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const buscarDebounced = useCallback(debounce(buscarPacientes, 300), [buscarPacientes])
+  const buscarDebounced = useCallback(
+    debounce((query: string) => {
+      buscaRef.current = query
+      offsetRef.current = 0
+      carregar(query, 0, false)
+    }, 300),
+    [carregar]
+  )
 
+  // Carga inicial
   useEffect(() => {
-    buscarPacientes('')
-  }, [buscarPacientes])
+    carregar('', 0, false)
+  }, [carregar])
 
+  // Ao digitar na busca
   useEffect(() => {
-    if (busca !== '') {
-      buscarDebounced(busca)
-    } else {
-      buscarPacientes('')
-    }
-  }, [busca, buscarDebounced, buscarPacientes])
+    buscaRef.current = busca
+    offsetRef.current = 0
+    buscarDebounced(busca)
+  }, [busca, buscarDebounced])
 
   return (
     <div className="flex flex-col h-full">
@@ -94,9 +157,6 @@ export default function PacientesPage() {
             onChange={(e) => setBusca(e.target.value)}
             className="w-full rounded-xl border-0 bg-white py-3 pl-9 pr-4 text-sm shadow-sm ring-1 ring-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          {buscando && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-          )}
         </div>
       </div>
 
@@ -132,9 +192,22 @@ export default function PacientesPage() {
                 status={statusMap[paciente.id] ?? 'em_dia'}
               />
             ))}
-            <p className="text-center text-xs text-gray-400 pt-2">
-              {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''}
-            </p>
+
+            {/* Sentinel — dispara o carregamento da próxima página */}
+            <div ref={sentinelRef} />
+
+            {/* Feedback de carregamento / fim da lista */}
+            {carregandoMais && (
+              <div className="flex justify-center py-4">
+                <div className="h-5 w-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+              </div>
+            )}
+
+            {!temMais && (
+              <p className="text-center text-xs text-gray-400 pt-2">
+                {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''} cadastrado{pacientes.length !== 1 ? 's' : ''}
+              </p>
+            )}
           </div>
         )}
       </div>
