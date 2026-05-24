@@ -210,25 +210,29 @@ export async function registrarPagamentoPaciente(
 
   // ── Autocorreção: lançamento "pago" mas orçamento tem saldo restante ──────
   // Ocorre quando o lançamento foi criado com valor_total menor que o orçamento.
-  // Nesse caso, lemos o valor real do orçamento vinculado e corrigimos o
-  // valor_total do lançamento silenciosamente antes de prosseguir.
+  // O valor real do orçamento é a soma dos itens em orcamento_itens.
+  // Corrige o valor_total do lançamento silenciosamente antes de prosseguir.
   if (saldoDisponivel <= 0 && lancamento?.descricao) {
     const matchOrc = lancamento.descricao.match(/\[orc:([a-f0-9-]+)\]/i)
     if (matchOrc) {
       const orcId = matchOrc[1]
-      const { data: orcRaw } = await supabase
-        .from('orcamentos')
-        .select('valor_total')
-        .eq('id', orcId)
-        .single()
 
-      const valorOrcamento = (orcRaw as { valor_total: number } | null)?.valor_total ?? 0
+      // Soma os itens do orçamento para obter o valor real
+      const { data: itensRaw } = await supabase
+        .from('orcamento_itens')
+        .select('valor')
+        .eq('orcamento_id', orcId)
+
+      const valorOrcamento = (itensRaw ?? []).reduce(
+        (acc, item) => acc + ((item as { valor: number }).valor ?? 0),
+        0
+      )
 
       if (valorOrcamento > totalJaPago) {
         // Corrige o valor_total do lançamento para bater com o orçamento
         await supabase
           .from('financeiro_lancamentos')
-          .update({ valor_total: valorOrcamento })
+          .update({ valor_total: Number(valorOrcamento.toFixed(2)) })
           .eq('id', input.lancamentoId)
 
         valorTotal = valorOrcamento
