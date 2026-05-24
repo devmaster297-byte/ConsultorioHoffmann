@@ -31,7 +31,6 @@ export default function PacientesPage() {
         .select('*')
         .eq('clinica_id', clinicaId)
         .order('nome')
-        .limit(50)
 
       if (query.trim()) {
         req = req.or(
