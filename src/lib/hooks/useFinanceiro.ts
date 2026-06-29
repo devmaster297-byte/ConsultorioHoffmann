@@ -62,6 +62,104 @@ export interface Inadimplente {
   parcelas: ParcelaComLancamento[]
 }
 
+// ─── Saldo de orçamentos aprovados sem registro de parcela pendente ──────────
+// CORREÇÃO: orçamentos aprovados só geram uma linha em `financeiro_parcelas`
+// no momento em que o PRIMEIRO pagamento é registrado (ver registrarPagamentoPaciente
+// em useFinanceiroPaciente.ts), e essa linha sempre nasce com status 'pago' — nunca
+// 'pendente'. Ou seja: o saldo que falta receber de um orçamento aprovado NUNCA
+// existe como linha em `financeiro_parcelas`. Todas as telas que somam "pendente"
+// consultando apenas `financeiro_parcelas` (Dashboard, Parcelas, Inadimplentes,
+// status do paciente) ignoram esse saldo. Esta função recalcula esse saldo a
+// partir de `orcamentos` + `orcamento_itens`, do mesmo jeito que já é feito
+// (corretamente) na aba "Orçamentos" do dashboard financeiro.
+export interface SaldoOrcamentoPendente {
+  paciente_id: string
+  orcamento_id: string
+  saldo: number
+  criado_em: string
+}
+
+export async function buscarSaldosOrcamentosAprovados(
+  clinicaId: string,
+  pacienteIds?: string[]
+): Promise<SaldoOrcamentoPendente[]> {
+  if (!clinicaId) return []
+  const supabase = createClient()
+
+  let query = supabase
+    .from('orcamentos')
+    .select('id, paciente_id, created_at')
+    .eq('clinica_id', clinicaId)
+    .eq('status', 'aprovado')
+
+  if (pacienteIds && pacienteIds.length > 0) {
+    query = query.in('paciente_id', pacienteIds)
+  }
+
+  const { data: orcsRaw } = await query
+  const orcs = (orcsRaw ?? []) as { id: string; paciente_id: string; created_at: string }[]
+  if (orcs.length === 0) return []
+
+  const orcIds = orcs.map((o) => o.id)
+
+  const { data: itensRaw } = await supabase
+    .from('orcamento_itens')
+    .select('orcamento_id, valor')
+    .in('orcamento_id', orcIds)
+
+  const valorPorOrc: Record<string, number> = {}
+  for (const item of (itensRaw ?? []) as { orcamento_id: string; valor: number }[]) {
+    valorPorOrc[item.orcamento_id] = (valorPorOrc[item.orcamento_id] ?? 0) + Number(item.valor)
+  }
+
+  // Lançamentos de receita desses pacientes — usados para achar o vínculo
+  // via prefixo "[orc:UUID]" gravado na descrição (mesma lógica do resto do app)
+  const pacIdsUnicos = [...new Set(orcs.map((o) => o.paciente_id))]
+  const { data: lancsRaw } = await supabase
+    .from('financeiro_lancamentos')
+    .select('id, descricao, paciente_id')
+    .eq('clinica_id', clinicaId)
+    .eq('tipo', 'receita')
+    .in('paciente_id', pacIdsUnicos)
+
+  const lancPorOrc: Record<string, string> = {}
+  for (const l of (lancsRaw ?? []) as { id: string; descricao: string }[]) {
+    const m = l.descricao.match(/^\[orc:([a-f0-9-]{36})\]/)
+    if (m) lancPorOrc[m[1]] = l.id
+  }
+
+  const lancIds = Object.values(lancPorOrc)
+  const pagoPorLanc: Record<string, number> = {}
+  if (lancIds.length > 0) {
+    const { data: parcelasRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('lancamento_id, valor_pago')
+      .in('lancamento_id', lancIds)
+      .eq('status', 'pago')
+    for (const p of (parcelasRaw ?? []) as { lancamento_id: string; valor_pago: number | null }[]) {
+      pagoPorLanc[p.lancamento_id] = (pagoPorLanc[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
+    }
+  }
+
+  const resultado: SaldoOrcamentoPendente[] = []
+  for (const o of orcs) {
+    const valorTotal = valorPorOrc[o.id] ?? 0
+    const lancId = lancPorOrc[o.id]
+    const valorPago = lancId ? (pagoPorLanc[lancId] ?? 0) : 0
+    const saldo = Number((valorTotal - valorPago).toFixed(2))
+    if (saldo > 0.01) {
+      resultado.push({
+        paciente_id: o.paciente_id,
+        orcamento_id: o.id,
+        saldo,
+        criado_em: o.created_at,
+      })
+    }
+  }
+
+  return resultado
+}
+
 // ─── Hook principal ───────────────────────────────────────────────────────────
 
 export function useFinanceiro(clinicaId: string, mes?: string) {
@@ -203,32 +301,32 @@ export function useInadimplentes(clinicaId: string) {
     const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
     const lancIds = lancamentos.map((l) => l.id)
 
-    if (lancIds.length === 0) {
-      setInadimplentes([])
-      setCarregando(false)
-      return
-    }
+    // CORREÇÃO: removido o "return" antecipado que havia aqui quando lancIds
+    // estava vazio. Orçamentos aprovados sem nenhum pagamento ainda não têm
+    // nenhuma linha em financeiro_lancamentos (ela só é criada no primeiro
+    // pagamento), então esse "return" fazia a tela inteira mostrar "tudo em
+    // dia" mesmo com saldo de orçamento em aberto. Agora seguimos com listas
+    // vazias e deixamos a checagem de saldo de orçamentos (abaixo) rodar.
 
     const lancMap: Record<string, LancamentoRow> = Object.fromEntries(
       lancamentos.map((l) => [l.id, l])
     )
 
     // Todas as parcelas pendentes, pago_parcial ou vencidas (qualquer saldo aberto)
-    const { data: parcelasRaw } = await supabase
-      .from('financeiro_parcelas')
-      .select('*')
-      .eq('clinica_id', clinicaId)
-      .in('lancamento_id', lancIds)
-      .in('status', ['pendente', 'pago_parcial', 'vencido'])
-      .order('data_vencimento')
+    const { data: parcelasRaw } = lancIds.length > 0
+      ? await supabase
+          .from('financeiro_parcelas')
+          .select('*')
+          .eq('clinica_id', clinicaId)
+          .in('lancamento_id', lancIds)
+          .in('status', ['pendente', 'pago_parcial', 'vencido'])
+          .order('data_vencimento')
+      : { data: [] }
 
     const parcelas = (parcelasRaw ?? []) as unknown as ParcelaRow[]
 
-    if (parcelas.length === 0) {
-      setInadimplentes([])
-      setCarregando(false)
-      return
-    }
+    // CORREÇÃO: idem acima — não retornamos mais aqui quando não há parcelas
+    // tradicionais. O saldo de orçamentos aprovados é checado mais abaixo.
 
     // Enriquecer com lançamento
     const comLancamento: ParcelaComLancamento[] = parcelas.map((p) => {
@@ -292,6 +390,66 @@ export function useInadimplentes(clinicaId: string) {
       const saldoParcela = p.valor - (p.valor_pago ?? 0)
       grupos[pacId].total_vencido += saldoParcela
       grupos[pacId].parcelas.push(p)
+    }
+
+    // ── Incluir saldo de orçamentos aprovados ainda sem parcela registrada ──
+    // (ver comentário em buscarSaldosOrcamentosAprovados) — sem isso, pacientes
+    // com orçamento aprovado e nenhum pagamento ainda não apareciam aqui.
+    const saldosOrcamentos = await buscarSaldosOrcamentosAprovados(clinicaId)
+
+    if (saldosOrcamentos.length > 0) {
+      const pacIdsFaltantes = [
+        ...new Set(
+          saldosOrcamentos
+            .map((s) => s.paciente_id)
+            .filter((id) => !pacienteMap[id] && !grupos[id])
+        ),
+      ]
+
+      let pacienteMapExtra: Record<string, string> = {}
+      if (pacIdsFaltantes.length > 0) {
+        const { data: pacientesExtraRaw } = await supabase
+          .from('pacientes')
+          .select('id, nome')
+          .in('id', pacIdsFaltantes)
+        const pacientesExtra = (pacientesExtraRaw ?? []) as unknown as PacienteRow[]
+        pacienteMapExtra = Object.fromEntries(pacientesExtra.map((p) => [p.id, p.nome]))
+      }
+
+      for (const s of saldosOrcamentos) {
+        if (!grupos[s.paciente_id]) {
+          grupos[s.paciente_id] = {
+            paciente_id: s.paciente_id,
+            paciente_nome: pacienteMap[s.paciente_id] ?? pacienteMapExtra[s.paciente_id] ?? 'Paciente',
+            total_vencido: 0,
+            parcelas: [],
+          }
+        }
+
+        grupos[s.paciente_id].total_vencido += s.saldo
+
+        // Entrada sintética só para exibição (contagem de pendências) —
+        // não existe como linha real em financeiro_parcelas.
+        grupos[s.paciente_id].parcelas.push({
+          id: `orc-saldo-${s.orcamento_id}`,
+          lancamento_id: '',
+          clinica_id: clinicaId,
+          numero: 1,
+          valor: s.saldo,
+          valor_pago: 0,
+          data_vencimento: s.criado_em.split('T')[0],
+          data_pagamento: null,
+          status: 'pendente',
+          lancamento: {
+            id: '',
+            descricao: 'Orçamento aprovado aguardando pagamento',
+            tipo: 'receita',
+            paciente_id: s.paciente_id,
+            atendimento_id: null,
+          },
+          paciente_nome: pacienteMap[s.paciente_id] ?? pacienteMapExtra[s.paciente_id] ?? null,
+        })
+      }
     }
 
     // Ordenar por maior saldo pendente
