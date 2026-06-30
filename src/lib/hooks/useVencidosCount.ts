@@ -9,11 +9,12 @@ export function useVencidosCount(clinicaId: string | null) {
   const calcular = useCallback(async () => {
     if (!clinicaId) return
 
-    // Atualizar status vencido (mesma lógica do useFinanceiro)
     const agora = new Date()
     const hoje = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000)
       .toISOString().split('T')[0]
 
+    // 1. Marcar como vencidas as parcelas cujo prazo já passou
+    //    (filtro direto por clinica_id — sem .in() de lançamentos)
     await supabase
       .from('financeiro_parcelas')
       .update({ status: 'vencido' })
@@ -21,31 +22,33 @@ export function useVencidosCount(clinicaId: string | null) {
       .in('status', ['pendente', 'pago_parcial'])
       .lt('data_vencimento', hoje)
 
-    // Contar pacientes distintos com parcelas vencidas
-    const { data: lancsRaw } = await supabase
-      .from('financeiro_lancamentos')
-      .select('id, paciente_id')
-      .eq('clinica_id', clinicaId)
-      .not('paciente_id', 'is', null)
-
-    const lancs = (lancsRaw ?? []) as { id: string; paciente_id: string }[]
-    if (!lancs.length) { setCount(0); return }
-
-    const lancIds = lancs.map(l => l.id)
-    const lancPacMap: Record<string, string> = {}
-    lancs.forEach(l => { lancPacMap[l.id] = l.paciente_id })
-
+    // 2. Buscar parcelas vencidas direto por clinica_id
+    //    CORREÇÃO: antes buscávamos todos os lançamentos (764+) e passávamos os
+    //    IDs num .in() — URL de 28 KB que o PostgREST descarta silenciosamente.
+    //    Agora: parcelas vencidas primeiro, lançamentos só dos IDs necessários.
     const { data: vencidosRaw } = await supabase
       .from('financeiro_parcelas')
       .select('lancamento_id')
       .eq('clinica_id', clinicaId)
       .eq('status', 'vencido')
-      .in('lancamento_id', lancIds)
+
+    const lancIdsVencidos = [
+      ...new Set(
+        (vencidosRaw ?? []).map((p: { lancamento_id: string }) => p.lancamento_id)
+      ),
+    ]
+
+    if (!lancIdsVencidos.length) { setCount(0); return }
+
+    // 3. Buscar os lançamentos apenas desses IDs para obter o paciente_id
+    const { data: lancsRaw } = await supabase
+      .from('financeiro_lancamentos')
+      .select('paciente_id')
+      .in('id', lancIdsVencidos)
+      .not('paciente_id', 'is', null)
 
     const pacientesComVencido = new Set(
-      (vencidosRaw ?? []).map((p: { lancamento_id: string }) =>
-        lancPacMap[p.lancamento_id]
-      ).filter(Boolean)
+      (lancsRaw ?? []).map((l: { paciente_id: string }) => l.paciente_id).filter(Boolean)
     )
 
     setCount(pacientesComVencido.size)

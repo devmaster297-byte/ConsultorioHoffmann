@@ -22,7 +22,6 @@ const CABECALHO = [
   'VALOR PENDENTE',
 ]
 
-// Mapa de chave interna → forma legível
 const FORMA_LABEL: Record<string, string> = {
   pix:            'PIX',
   dinheiro:       'Dinheiro',
@@ -34,15 +33,20 @@ const FORMA_LABEL: Record<string, string> = {
   outros:         'Outros',
 }
 
+// Dentistas reconhecidos — chave deve bater com o prefixo gravado na descrição
+// (ex.: "[eduardo] Proc" ou "[pamela] Proc")
+const DENTISTAS = ['rosieli', 'eduardo', 'pamela'] as const
+type DentistaKey = typeof DENTISTAS[number]
+
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
 interface LinhaExport {
-  paciente:     string
-  tratamento:   string
-  valorTotal:   number
-  tipoPagto:    string
-  valorPago:    number
-  dataPagto:    string
+  paciente:      string
+  tratamento:    string
+  valorTotal:    number
+  tipoPagto:     string
+  valorPago:     number
+  dataPagto:     string
   valorPendente: number
 }
 
@@ -50,17 +54,17 @@ interface LinhaExport {
 
 function limparDescricao(descricao: string): string {
   return descricao
-    .replace(/\[orc:[a-f0-9-]{36}\]/g, '')  // remove prefixo do orçamento
-    .replace(/\[[a-z]+\]/g, '')              // remove prefixo do dentista
+    .replace(/\[orc:[a-f0-9-]{36}\]/g, '')
+    .replace(/\[[a-z]+\]/g, '')
     .trim()
 }
 
-function extrairDentista(descricao: string): 'rosiele' | 'eduardo' | null {
+function extrairDentista(descricao: string): DentistaKey {
   const tags = [...descricao.matchAll(/\[([a-z]+)\]/g)]
   for (const m of tags) {
-    if (m[1] === 'rosiele' || m[1] === 'eduardo') return m[1]
+    if ((DENTISTAS as readonly string[]).includes(m[1])) return m[1] as DentistaKey
   }
-  return null
+  return 'rosieli' // padrão quando não há prefixo
 }
 
 function formatarDataBR(iso: string): string {
@@ -71,19 +75,43 @@ function formatarDataBR(iso: string): string {
 
 // ─── Busca de dados ───────────────────────────────────────────────────────────
 
-async function buscarDados(clinicaId: string, mes: string): Promise<{
-  rosiele: LinhaExport[]
-  eduardo: LinhaExport[]
-}> {
+async function buscarDados(clinicaId: string, mes: string): Promise<Record<DentistaKey, LinhaExport[]>> {
   const [ano, mesNum] = mes.split('-').map(Number)
   const inicioMes = `${mes}-01`
   const fimMes = new Date(ano, mesNum, 0).toISOString().split('T')[0]
 
-  // 1. Todos os lançamentos de receita da clínica
+  // CORREÇÃO: antes buscávamos todos os lançamentos e passávamos os IDs num
+  // .in() sobre parcelas — URL de 28 KB que o PostgREST descarta silenciosamente.
+  // Agora: parcelas primeiro por clinica_id, lançamentos só dos IDs necessários.
+
+  // 1. Todas as parcelas de receita (sem filtro de data ainda — precisamos de
+  //    todas para calcular o saldo total pago de cada lançamento)
+  const { data: todasParcelasRaw } = await supabase
+    .from('financeiro_parcelas')
+    .select('id, lancamento_id, valor, valor_pago, status, data_pagamento, numero')
+    .eq('clinica_id', clinicaId)
+
+  const todasParcelas = (todasParcelasRaw ?? []) as Array<{
+    id: string
+    lancamento_id: string
+    valor: number
+    valor_pago: number | null
+    status: string
+    data_pagamento: string | null
+    numero: number
+  }>
+
+  if (!todasParcelas.length) {
+    return { rosieli: [], eduardo: [], pamela: [] }
+  }
+
+  // 2. Buscar lançamentos de receita apenas dos IDs que aparecem nas parcelas
+  const lancIdsUnicos = [...new Set(todasParcelas.map(p => p.lancamento_id))]
+
   const { data: lancsRaw } = await supabase
     .from('financeiro_lancamentos')
     .select('id, descricao, valor_total, paciente_id, tipo')
-    .eq('clinica_id', clinicaId)
+    .in('id', lancIdsUnicos)
     .eq('tipo', 'receita')
 
   const lancs = (lancsRaw ?? []) as Array<{
@@ -94,27 +122,14 @@ async function buscarDados(clinicaId: string, mes: string): Promise<{
     tipo: string
   }>
 
-  if (!lancs.length) return { rosiele: [], eduardo: [] }
+  if (!lancs.length) return { rosieli: [], eduardo: [], pamela: [] }
 
-  const lancIds = lancs.map(l => l.id)
+  const lancIds = new Set(lancs.map(l => l.id))
 
-  // 2. Todas as parcelas desses lançamentos
-  const { data: parcelasRaw } = await supabase
-    .from('financeiro_parcelas')
-    .select('id, lancamento_id, valor, valor_pago, status, data_pagamento, numero')
-    .in('lancamento_id', lancIds)
+  // Filtrar parcelas para apenas as de receita
+  const parcelas = todasParcelas.filter(p => lancIds.has(p.lancamento_id))
 
-  const parcelas = (parcelasRaw ?? []) as Array<{
-    id: string
-    lancamento_id: string
-    valor: number
-    valor_pago: number | null
-    status: string
-    data_pagamento: string | null
-    numero: number
-  }>
-
-  // Parcelas pagas NO mês selecionado (para VALOR PAGO e Data do Pagamento)
+  // Parcelas pagas NO mês selecionado
   const parcelasMes = parcelas.filter(p =>
     (p.status === 'pago' || p.status === 'pago_parcial') &&
     p.data_pagamento &&
@@ -129,7 +144,7 @@ async function buscarDados(clinicaId: string, mes: string): Promise<{
     pagMesMap[p.lancamento_id].push(p)
   }
 
-  // Total pago de todos os tempos por lancamento (para VALOR PENDENTE)
+  // Total pago de todos os tempos por lançamento (para VALOR PENDENTE)
   const totalPagoMap: Record<string, number> = {}
   for (const p of parcelas) {
     if (p.status === 'pago' || p.status === 'pago_parcial') {
@@ -150,16 +165,8 @@ async function buscarDados(clinicaId: string, mes: string): Promise<{
     }
   }
 
-  // 4. Buscar forma de pagamento do mês (da parcela mais recente do mês)
-  // A forma fica no observação da parcela ou no lançamento; como não temos coluna
-  // específica, usamos o campo genérico da descrição avulsa ou deixamos em branco.
-  // Para pagamentos via FinanceiroAba, a forma foi registrada na observacao da parcela.
-  // Aqui buscamos nas parcelas o campo 'observacao' se existir, caso contrário deixa vazio.
-  // (Campo forma_pagamento não está no schema atual — seria uma evolução futura)
-
-  // 5. Montar linhas por dentista
-  const rosiele: LinhaExport[] = []
-  const eduardo: LinhaExport[] = []
+  // 4. Montar linhas separadas por dentista
+  const grupos: Record<DentistaKey, LinhaExport[]> = { rosieli: [], eduardo: [], pamela: [] }
 
   for (const lanc of lancs) {
     const dentista = extrairDentista(lanc.descricao)
@@ -170,71 +177,52 @@ async function buscarDados(clinicaId: string, mes: string): Promise<{
     const valorPagoMes = pagsDoMes.reduce((s, p) => s + (p.valor_pago ?? 0), 0)
 
     // Data do pagamento mais recente do mês
-    const datasDoMes = pagsDoMes
+    const dataPagto = pagsDoMes
       .map(p => p.data_pagamento!)
       .sort()
-      .reverse()
-    const dataPagto = datasDoMes[0] ? formatarDataBR(datasDoMes[0]) : ''
-
-    // Forma de pagamento — extraída da descricao avulsa se possível
-    // Formato avulso: "[eduardo] Manutenção" — sem forma na descricao
-    // Usamos em branco por ora; campo futuro quando adicionarmos coluna
-    const tipoPagto = ''
+      .reverse()[0]
 
     const totalPagoSempre = totalPagoMap[lanc.id] ?? 0
     const valorPendente = Math.max(0, lanc.valor_total - totalPagoSempre)
 
-    const linha: LinhaExport = {
+    grupos[dentista].push({
       paciente,
       tratamento: tratamento || 'Pagamento Avulso',
       valorTotal: lanc.valor_total,
-      tipoPagto,
+      tipoPagto: '',       // sem coluna no banco ainda — ver item #4 das melhorias
       valorPago: valorPagoMes,
-      dataPagto,
+      dataPagto: dataPagto ? formatarDataBR(dataPagto) : '',
       valorPendente,
-    }
-
-    // Incluir na seção do dentista — mesmo que não tenha pago esse mês
-    // (paciente continua ativo se tem saldo pendente)
-    if (dentista === 'eduardo') {
-      eduardo.push(linha)
-    } else {
-      // Rosieli = rosieli explícito OU sem prefixo (padrão)
-      rosiele.push(linha)
-    }
+    })
   }
 
-  // Ordenar: primeiro quem pagou no mês, depois por nome
+  // Ordenar cada grupo: quem pagou no mês primeiro, depois por nome
   const ordenar = (a: LinhaExport, b: LinhaExport) => {
     if (a.valorPago > 0 && b.valorPago === 0) return -1
     if (a.valorPago === 0 && b.valorPago > 0) return 1
     return a.paciente.localeCompare(b.paciente, 'pt-BR')
   }
 
-  rosiele.sort(ordenar)
-  eduardo.sort(ordenar)
+  grupos.rosieli.sort(ordenar)
+  grupos.eduardo.sort(ordenar)
+  grupos.pamela.sort(ordenar)
 
-  return { rosiele, eduardo }
+  return grupos
 }
 
-// ─── Construção da aba ────────────────────────────────────────────────────────
+// ─── Construção de uma aba ────────────────────────────────────────────────────
 
 function construirAba(
   ws: XLSX.WorkSheet,
   titulo: string,
   linhas: LinhaExport[],
-  nomeAbreviado: string
 ) {
   const totalLinhas = linhas.length
-  const primeiraLinhaDados = 3   // linha 1 = título, linha 2 = cabeçalho
+  const primeiraLinhaDados = 3
 
-  // Linha 1: título
   XLSX.utils.sheet_add_aoa(ws, [[titulo]], { origin: 'A1' })
-
-  // Linha 2: cabeçalho
   XLSX.utils.sheet_add_aoa(ws, [CABECALHO], { origin: 'A2' })
 
-  // Linhas de dados
   if (totalLinhas > 0) {
     const dadosAOA = linhas.map(l => [
       l.paciente,
@@ -251,7 +239,6 @@ function construirAba(
   const ultimaLinhaDados = primeiraLinhaDados + totalLinhas - 1
   const linhaTotais = ultimaLinhaDados + 2
 
-  // Linha de totais
   const linhaTotal: (string | number | null)[] = [
     'TOTAL',
     null,
@@ -263,21 +250,18 @@ function construirAba(
   ]
   XLSX.utils.sheet_add_aoa(ws, [linhaTotal], { origin: `A${linhaTotais}` })
 
-  // Larguras das colunas
   ws['!cols'] = [
-    { wch: 28 }, // A: PACIENTE
-    { wch: 30 }, // B: TRATAMENTO
-    { wch: 22 }, // C: VALOR TOTAL
-    { wch: 20 }, // D: TIPO PAGTO
-    { wch: 14 }, // E: VALOR PAGO
-    { wch: 20 }, // F: DATA
-    { wch: 18 }, // G: PENDENTE
+    { wch: 28 },
+    { wch: 30 },
+    { wch: 22 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 18 },
   ]
 
-  // Mesclar título (A1:G1)
   ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }]
 
-  // Definir ref total
   ws['!ref'] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
     e: { r: linhaTotais, c: 6 },
@@ -291,31 +275,25 @@ export async function exportarMensal(clinicaId: string, mes: string): Promise<vo
   const nomeMes = MESES_PT[mesNum - 1]
   const tituloMes = `${nomeMes} ${ano}`
 
-  const { rosiele, eduardo } = await buscarDados(clinicaId, mes)
+  const grupos = await buscarDados(clinicaId, mes)
 
   const wb = XLSX.utils.book_new()
 
-  // Aba Drª Rosieli
-  const wsRosieli = XLSX.utils.aoa_to_sheet([])
-  construirAba(
-    wsRosieli,
-    `Acompanhamento Pacientes ${tituloMes} — Drª Rosieli Hoffmann`,
-    rosiele,
-    'Rosieli'
-  )
-  XLSX.utils.book_append_sheet(wb, wsRosieli, 'Drª Rosieli')
+  const abasDentistas: Array<{ key: DentistaKey; nomeLong: string; nomeAba: string }> = [
+    { key: 'rosieli', nomeLong: 'Drª Rosieli Hoffmann',   nomeAba: 'Drª Rosieli'  },
+    { key: 'eduardo', nomeLong: 'Drº Eduardo Corteletti', nomeAba: 'Dr. Eduardo'  },
+    { key: 'pamela',  nomeLong: 'Drª Pamela Bolsoni',     nomeAba: 'Drª Pamela'   },
+  ]
 
-  // Aba Dr. Eduardo
-  const wsEduardo = XLSX.utils.aoa_to_sheet([])
-  construirAba(
-    wsEduardo,
-    `Acompanhamento Pacientes ${tituloMes} — Drº Eduardo Corteletti`,
-    eduardo,
-    'Eduardo'
-  )
-  XLSX.utils.book_append_sheet(wb, wsEduardo, 'Dr. Eduardo')
+  for (const { key, nomeLong, nomeAba } of abasDentistas) {
+    const ws = XLSX.utils.aoa_to_sheet([])
+    construirAba(
+      ws,
+      `Acompanhamento Pacientes ${tituloMes} — ${nomeLong}`,
+      grupos[key],
+    )
+    XLSX.utils.book_append_sheet(wb, ws, nomeAba)
+  }
 
-  // Download
-  const nomeArquivo = `pacientes_${mes}_hoffmann.xlsx`
-  XLSX.writeFile(wb, nomeArquivo)
+  XLSX.writeFile(wb, `pacientes_${mes}_hoffmann.xlsx`)
 }
