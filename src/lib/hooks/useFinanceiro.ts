@@ -185,33 +185,36 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
 
     const supabase = createClient()
 
-    // Buscar todos os lançamentos do mês com parcelas
-    const { data: lancamentosRaw } = await supabase
-      .from('financeiro_lancamentos')
-      .select('id, tipo, descricao, valor_total')
+    // CORREÇÃO: antes buscávamos todos os lançamentos da clínica (764+) e
+    // usávamos os IDs num .in() sobre parcelas — gerando URLs de 28 KB que
+    // o PostgREST silenciosamente descarta e retorna vazio.
+    // Agora invertemos: buscamos parcelas direto por clinica_id + filtro de
+    // data (resultado pequeno), e só depois buscamos os lançamentos dos IDs
+    // que realmente apareceram.
+
+    // 1. Parcelas com vencimento neste mês (filtro direto por clinica_id)
+    const { data: parcelasMesRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
       .eq('clinica_id', clinicaId)
+      .gte('data_vencimento', inicioMes)
+      .lte('data_vencimento', fimMes)
 
-    const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
-    const lancIds = lancamentos.map((l) => l.id)
-    const lancMap: Record<string, LancamentoRow> = Object.fromEntries(
-      lancamentos.map((l) => [l.id, l])
-    )
+    const parcelasMes = (parcelasMesRaw ?? []) as unknown as ParcelaRow[]
 
-    // Parcelas com vencimento neste mês
-    let parcelasMes: ParcelaRow[] = []
-    if (lancIds.length > 0) {
-      const { data: parcelasMesRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('*')
-        .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
-        .gte('data_vencimento', inicioMes)
-        .lte('data_vencimento', fimMes)
-
-      parcelasMes = (parcelasMesRaw ?? []) as unknown as ParcelaRow[]
+    // 2. Buscar somente os lançamentos referenciados pelas parcelas do mês
+    const lancIdsMes = [...new Set(parcelasMes.map((p) => p.lancamento_id))]
+    let lancMap: Record<string, LancamentoRow> = {}
+    if (lancIdsMes.length > 0) {
+      const { data: lancamentosRaw } = await supabase
+        .from('financeiro_lancamentos')
+        .select('id, tipo, descricao, valor_total')
+        .in('id', lancIdsMes)
+      const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
+      lancMap = Object.fromEntries(lancamentos.map((l) => [l.id, l]))
     }
 
-    // Calcular métricas
+    // 3. Calcular métricas
     let totalRecebido = 0
     let totalPendente = 0
     let totalDespesas = 0
@@ -244,25 +247,21 @@ export function useFinanceiro(clinicaId: string, mes?: string) {
       saldo: totalRecebido - totalDespesas,
     })
 
-    // Próximos vencimentos (próximos 7 dias, apenas receitas pendentes)
+    // 4. Próximos vencimentos (próximos 7 dias, apenas receitas pendentes)
     const hoje = new Date().toISOString().split('T')[0]
     const em7Dias = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    let proxVenc: ParcelaRow[] = []
-    if (lancIds.length > 0) {
-      const { data: proxVencRaw } = await supabase
-        .from('financeiro_parcelas')
-        .select('*')
-        .eq('clinica_id', clinicaId)
-        .in('lancamento_id', lancIds)
-        .in('status', ['pendente', 'pago_parcial'])
-        .gte('data_vencimento', hoje)
-        .lte('data_vencimento', em7Dias)
-        .order('data_vencimento')
-        .limit(10)
+    const { data: proxVencRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
+      .eq('clinica_id', clinicaId)
+      .in('status', ['pendente', 'pago_parcial'])
+      .gte('data_vencimento', hoje)
+      .lte('data_vencimento', em7Dias)
+      .order('data_vencimento')
+      .limit(10)
 
-      proxVenc = (proxVencRaw ?? []) as unknown as ParcelaRow[]
-    }
+    const proxVenc = (proxVencRaw ?? []) as unknown as ParcelaRow[]
 
     // Enriquecer com dados do lançamento e paciente
     const proxComPaciente = await enriquecerParcelas(proxVenc, clinicaId)
@@ -290,61 +289,54 @@ export function useInadimplentes(clinicaId: string) {
 
     const supabase = createClient()
 
-    // Lançamentos de receita com paciente vinculado
-    const { data: lancamentosRaw } = await supabase
-      .from('financeiro_lancamentos')
-      .select('id, descricao, paciente_id, atendimento_id, tipo, valor_total')
+    // CORREÇÃO: mesmo bug dos cards zerados — buscávamos todos os lançamentos
+    // da clínica (700+) e usávamos os IDs num .in() sobre parcelas, gerando
+    // URLs de 28 KB que o PostgREST descarta silenciosamente.
+    // Agora: parcelas primeiro por clinica_id, lançamentos depois só dos IDs necessários.
+
+    // 1. Parcelas com saldo em aberto (filtro direto por clinica_id)
+    const { data: parcelasRaw } = await supabase
+      .from('financeiro_parcelas')
+      .select('*')
       .eq('clinica_id', clinicaId)
-      .eq('tipo', 'receita')
-      .not('paciente_id', 'is', null)
-
-    const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
-    const lancIds = lancamentos.map((l) => l.id)
-
-    // CORREÇÃO: removido o "return" antecipado que havia aqui quando lancIds
-    // estava vazio. Orçamentos aprovados sem nenhum pagamento ainda não têm
-    // nenhuma linha em financeiro_lancamentos (ela só é criada no primeiro
-    // pagamento), então esse "return" fazia a tela inteira mostrar "tudo em
-    // dia" mesmo com saldo de orçamento em aberto. Agora seguimos com listas
-    // vazias e deixamos a checagem de saldo de orçamentos (abaixo) rodar.
-
-    const lancMap: Record<string, LancamentoRow> = Object.fromEntries(
-      lancamentos.map((l) => [l.id, l])
-    )
-
-    // Todas as parcelas pendentes, pago_parcial ou vencidas (qualquer saldo aberto)
-    const { data: parcelasRaw } = lancIds.length > 0
-      ? await supabase
-          .from('financeiro_parcelas')
-          .select('*')
-          .eq('clinica_id', clinicaId)
-          .in('lancamento_id', lancIds)
-          .in('status', ['pendente', 'pago_parcial', 'vencido'])
-          .order('data_vencimento')
-      : { data: [] }
+      .in('status', ['pendente', 'pago_parcial', 'vencido'])
+      .order('data_vencimento')
 
     const parcelas = (parcelasRaw ?? []) as unknown as ParcelaRow[]
 
-    // CORREÇÃO: idem acima — não retornamos mais aqui quando não há parcelas
-    // tradicionais. O saldo de orçamentos aprovados é checado mais abaixo.
+    // 2. Buscar somente os lançamentos de receita referenciados pelas parcelas
+    const lancIdsPendentes = [...new Set(parcelas.map((p) => p.lancamento_id))]
+    let lancMap: Record<string, LancamentoRow> = {}
+    if (lancIdsPendentes.length > 0) {
+      const { data: lancamentosRaw } = await supabase
+        .from('financeiro_lancamentos')
+        .select('id, descricao, paciente_id, atendimento_id, tipo, valor_total')
+        .in('id', lancIdsPendentes)
+        .eq('tipo', 'receita')
+        .not('paciente_id', 'is', null)
+      const lancamentos = (lancamentosRaw ?? []) as unknown as LancamentoRow[]
+      lancMap = Object.fromEntries(lancamentos.map((l) => [l.id, l]))
+    }
 
-    // Enriquecer com lançamento
-    const comLancamento: ParcelaComLancamento[] = parcelas.map((p) => {
-      const lanc = lancMap[p.lancamento_id]
-      return {
-        ...p,
-        lancamento: {
-          id: lanc?.id ?? '',
-          descricao: lanc?.descricao ?? '',
-          tipo: lanc?.tipo ?? 'receita',
-          paciente_id: lanc?.paciente_id ?? null,
-          atendimento_id: lanc?.atendimento_id ?? null,
-        },
-        paciente_nome: null,
-      }
-    })
+    // 3. Enriquecer parcelas com lançamento
+    const comLancamento: ParcelaComLancamento[] = parcelas
+      .filter((p) => !!lancMap[p.lancamento_id])
+      .map((p) => {
+        const lanc = lancMap[p.lancamento_id]
+        return {
+          ...p,
+          lancamento: {
+            id: lanc.id,
+            descricao: lanc.descricao,
+            tipo: lanc.tipo,
+            paciente_id: lanc.paciente_id ?? null,
+            atendimento_id: lanc.atendimento_id ?? null,
+          },
+          paciente_nome: null,
+        }
+      })
 
-    // Buscar nomes dos pacientes
+    // 4. Buscar nomes dos pacientes
     const pacienteIds = [
       ...new Set(
         comLancamento
@@ -359,7 +351,6 @@ export function useInadimplentes(clinicaId: string) {
         .from('pacientes')
         .select('id, nome')
         .in('id', pacienteIds)
-
       const pacientes = (pacientesRaw ?? []) as unknown as PacienteRow[]
       pacienteMap = Object.fromEntries(pacientes.map((p) => [p.id, p.nome]))
     }
@@ -371,7 +362,7 @@ export function useInadimplentes(clinicaId: string) {
         : null,
     }))
 
-    // Agrupar por paciente — saldo = valor - valor_pago de cada parcela
+    // 5. Agrupar por paciente
     const grupos: Record<string, Inadimplente> = {}
     for (const p of parcelasComNome) {
       const pacId = p.lancamento.paciente_id
@@ -381,20 +372,17 @@ export function useInadimplentes(clinicaId: string) {
         grupos[pacId] = {
           paciente_id: pacId,
           paciente_nome: p.paciente_nome ?? 'Paciente',
-          total_vencido: 0, // aqui vira "saldo pendente"
+          total_vencido: 0,
           parcelas: [],
         }
       }
 
-      // Saldo real de cada parcela
       const saldoParcela = p.valor - (p.valor_pago ?? 0)
       grupos[pacId].total_vencido += saldoParcela
       grupos[pacId].parcelas.push(p)
     }
 
     // ── Incluir saldo de orçamentos aprovados ainda sem parcela registrada ──
-    // (ver comentário em buscarSaldosOrcamentosAprovados) — sem isso, pacientes
-    // com orçamento aprovado e nenhum pagamento ainda não apareciam aqui.
     const saldosOrcamentos = await buscarSaldosOrcamentosAprovados(clinicaId)
 
     if (saldosOrcamentos.length > 0) {
@@ -429,6 +417,7 @@ export function useInadimplentes(clinicaId: string) {
         grupos[s.paciente_id].total_vencido += s.saldo
 
         // Entrada sintética só para exibição (contagem de pendências) —
+
         // não existe como linha real em financeiro_parcelas.
         grupos[s.paciente_id].parcelas.push({
           id: `orc-saldo-${s.orcamento_id}`,
