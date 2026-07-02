@@ -88,7 +88,7 @@ async function buscarDados(clinicaId: string, mes: string): Promise<Record<Denti
   //    todas para calcular o saldo total pago de cada lançamento)
   const { data: todasParcelasRaw } = await supabase
     .from('financeiro_parcelas')
-    .select('id, lancamento_id, valor, valor_pago, status, data_pagamento, numero')
+    .select('id, lancamento_id, valor, valor_pago, status, data_pagamento, numero, forma_pagamento')
     .eq('clinica_id', clinicaId)
 
   const todasParcelas = (todasParcelasRaw ?? []) as Array<{
@@ -99,6 +99,7 @@ async function buscarDados(clinicaId: string, mes: string): Promise<Record<Denti
     status: string
     data_pagamento: string | null
     numero: number
+    forma_pagamento: string | null
   }>
 
   if (!todasParcelas.length) {
@@ -182,6 +183,18 @@ async function buscarDados(clinicaId: string, mes: string): Promise<Record<Denti
       .sort()
       .reverse()[0]
 
+    // Forma de pagamento — usa a mais recente do mês; se houver mais de uma
+    // forma diferente, lista todas separadas por " / "
+    const formasUnicas = [
+      ...new Set(
+        pagsDoMes
+          .map(p => p.forma_pagamento)
+          .filter((f): f is string => !!f)
+          .map(f => FORMA_LABEL[f] ?? f)
+      ),
+    ]
+    const tipoPagto = formasUnicas.join(' / ')
+
     const totalPagoSempre = totalPagoMap[lanc.id] ?? 0
     const valorPendente = Math.max(0, lanc.valor_total - totalPagoSempre)
 
@@ -189,7 +202,7 @@ async function buscarDados(clinicaId: string, mes: string): Promise<Record<Denti
       paciente,
       tratamento: tratamento || 'Pagamento Avulso',
       valorTotal: lanc.valor_total,
-      tipoPagto: '',       // sem coluna no banco ainda — ver item #4 das melhorias
+      tipoPagto,
       valorPago: valorPagoMes,
       dataPagto: dataPagto ? formatarDataBR(dataPagto) : '',
       valorPendente,

@@ -458,13 +458,14 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
     if (lancIds.length > 0) {
       const { data: parcelasRaw } = await supabase
         .from('financeiro_parcelas')
-        .select('id, lancamento_id, valor, valor_pago, data_pagamento, status')
+        .select('id, lancamento_id, valor, valor_pago, data_pagamento, status, forma_pagamento')
         .in('lancamento_id', lancIds)
         .order('data_pagamento', { ascending: false })
 
       const parcelasDB = (parcelasRaw ?? []) as Array<{
         id: string; lancamento_id: string; valor: number
         valor_pago: number | null; data_pagamento: string | null; status: string
+        forma_pagamento: string | null
       }>
 
       parcelasDB.forEach((p) => {
@@ -477,7 +478,7 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
               descricao_lancamento: lanc?.descricao ?? '',
               valor_pago: p.valor_pago ?? p.valor,
               data_pagamento: p.data_pagamento,
-              forma_pagamento: null,
+              forma_pagamento: p.forma_pagamento ?? null,
             })
           }
         }

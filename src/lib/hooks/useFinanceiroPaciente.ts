@@ -84,7 +84,7 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
     // Buscar TODAS as parcelas do lançamento
     const { data: parcelasRaw } = await supabase
       .from('financeiro_parcelas')
-      .select('id, lancamento_id, valor, valor_pago, data_pagamento, status, numero')
+      .select('id, lancamento_id, valor, valor_pago, data_pagamento, status, numero, forma_pagamento')
       .in('lancamento_id', lancIds)
       .order('data_pagamento', { ascending: false })
 
@@ -96,6 +96,7 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
       data_pagamento: string | null
       status: string
       numero: number
+      forma_pagamento: string | null
     }>
 
     const parcelasPorLanc: Record<string, typeof parcelas> = {}
@@ -121,7 +122,7 @@ export function useFinanceiroPaciente(pacienteId: string, clinicaId: string) {
           lancamento_id: l.id,
           valor_pago: p.valor_pago ?? p.valor,
           data_pagamento: p.data_pagamento!,
-          forma_pagamento: null,
+          forma_pagamento: p.forma_pagamento ?? null,
           observacao: null,
           descricao_lancamento: l.descricao,
         }))
@@ -258,14 +259,15 @@ export async function registrarPagamentoPaciente(
   const { error } = await supabase
     .from('financeiro_parcelas')
     .insert({
-      lancamento_id: input.lancamentoId,
-      clinica_id: input.clinicaId,
-      numero: proximoNumero,
-      valor: Number(valorRegistrar.toFixed(2)),
-      valor_pago: Number(valorRegistrar.toFixed(2)),
+      lancamento_id:   input.lancamentoId,
+      clinica_id:      input.clinicaId,
+      numero:          proximoNumero,
+      valor:           Number(valorRegistrar.toFixed(2)),
+      valor_pago:      Number(valorRegistrar.toFixed(2)),
       data_vencimento: input.dataPagamento,
-      data_pagamento: input.dataPagamento,
-      status: 'pago',
+      data_pagamento:  input.dataPagamento,
+      status:          'pago',
+      forma_pagamento: input.formaPagamento || null,
     })
 
   if (error) return { sucesso: false, erro: 'Erro ao registrar pagamento' }
