@@ -53,6 +53,7 @@ interface OrcamentoRow {
   paciente_id: string
   status: 'pendente' | 'aprovado' | 'recusado'
   created_at: string
+  aprovado_em: string | null
 }
 
 interface OrcamentoItemRow {
@@ -150,6 +151,7 @@ interface OrcamentoFinanceiro {
   valor_pago: number
   valor_pendente: number
   created_at: string
+  aprovado_em: string | null
   itens: string[]   // nomes dos procedimentos
 }
 
@@ -168,7 +170,7 @@ function useOrcamentosFinanceiro(clinicaId: string) {
 
     const { data: orcs } = await supabase
       .from('orcamentos')
-      .select('id, paciente_id, status, created_at')
+      .select('id, paciente_id, status, created_at, aprovado_em')
       .eq('clinica_id', clinicaId)
       .in('status', ['pendente', 'aprovado'])
       .order('created_at', { ascending: false })
@@ -232,6 +234,7 @@ function useOrcamentosFinanceiro(clinicaId: string) {
         valor_pago: valorPago,
         valor_pendente: Math.max(0, valorTotal - valorPago),
         created_at: o.created_at,
+        aprovado_em: o.aprovado_em ?? null,
         itens: itens.map((i) => i.nome),
       }
     })
@@ -721,7 +724,17 @@ export default function FinanceiroPage() {
                                 {o.itens.slice(0, 2).join(', ')}
                                 {o.itens.length > 2 && ` +${o.itens.length - 2}`}
                               </p>
-                              <p className="text-xs text-gray-300 mt-0.5">{formatarData(o.created_at.split('T')[0])}</p>
+                              <p className="text-xs text-gray-300 mt-0.5">
+                                {formatarData(o.created_at.split('T')[0])}
+                                {o.aprovado_em && o.status === 'aprovado' && (() => {
+                                  const dias = Math.floor((Date.now() - new Date(o.aprovado_em).getTime()) / 86_400_000)
+                                  return dias > 60 ? (
+                                    <span className="ml-1.5 text-amber-500 font-medium">⚠ {dias}d aguardando</span>
+                                  ) : dias > 0 ? (
+                                    <span className="ml-1.5 text-gray-400"> · aprovado há {dias}d</span>
+                                  ) : null
+                                })()}
+                              </p>
                             </div>
                             {/* Badge status */}
                             <span className={`flex-shrink-0 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${

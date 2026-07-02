@@ -18,16 +18,23 @@ interface Orcamento {
   status: StatusOrcamento
   observacoes: string | null
   created_at: string
+  aprovado_em: string | null
   itens: ItemOrcamento[]
   valor_total: number
 }
 interface OrcamentoDB {
   id: string; status: StatusOrcamento; observacoes: string | null
-  created_at: string; paciente_id: string; clinica_id: string
+  created_at: string; aprovado_em: string | null
+  paciente_id: string; clinica_id: string
 }
 interface ItemOrcamentoDB {
   id: string; orcamento_id: string; procedimento_id: string | null
   procedimento_nome: string; valor: number
+}
+
+// Retorna quantos dias se passaram desde a data ISO fornecida
+function diasDesde(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
 const STATUS_CONFIG = {
@@ -286,6 +293,7 @@ export default function OrcamentosPage() {
 
     setOrcamentos(typedOrcs.map(o => ({
       ...o,
+      aprovado_em: o.aprovado_em ?? null,
       itens: itensPorOrc[o.id] ?? [],
       valor_total: (itensPorOrc[o.id] ?? []).reduce((s, i) => s + i.valor, 0),
     })))
@@ -480,12 +488,29 @@ export default function OrcamentosPage() {
           ) : (
             orcamentos.map(orc => {
               const cfg = STATUS_CONFIG[orc.status]
+              const diasAprovado = orc.aprovado_em ? diasDesde(orc.aprovado_em) : null
+              const alertaAntigo = orc.status === 'aprovado' && diasAprovado !== null && diasAprovado > 60
               return (
-                <div key={orc.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div key={orc.id} className={`bg-white rounded-2xl shadow-sm overflow-hidden ${alertaAntigo ? 'ring-1 ring-amber-300' : ''}`}>
+                  {alertaAntigo && (
+                    <div className="flex items-center gap-1.5 px-4 py-2 bg-amber-50 border-b border-amber-100">
+                      <AlertCircle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                      <p className="text-xs text-amber-700 font-medium">
+                        Aprovado há {diasAprovado} dias — pagamento pendente
+                      </p>
+                    </div>
+                  )}
                   {/* Header */}
                   <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs text-gray-400">{formatarData(orc.created_at.split('T')[0])}</p>
+                      <p className="text-xs text-gray-400">
+                        Criado em {formatarData(orc.created_at.split('T')[0])}
+                        {orc.aprovado_em && (
+                          <span className="ml-2 text-green-600">
+                            · Aprovado em {formatarData(orc.aprovado_em.split('T')[0])}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xl font-bold text-gray-900 mt-0.5">{formatarMoeda(orc.valor_total)}</p>
                     </div>
                     <div className="flex items-center gap-2">
