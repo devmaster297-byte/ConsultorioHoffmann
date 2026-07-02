@@ -1,36 +1,62 @@
 // src/app/(app)/configuracoes/comissao/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save, Percent, Info } from 'lucide-react'
-import { useComissaoStore } from '@/store/comissao.store'
+import { useComissao } from '@/lib/hooks/useComissao'
 import { formatarMoeda } from '@/lib/utils'
 
 export default function ComissaoPage() {
   const router = useRouter()
-  const { percentualRosieli, percentualPatricia, setPercentualRosieli, setPercentualPatricia } = useComissaoStore()
+  const { percentualRosieli, percentualPatricia, carregando, salvar } = useComissao()
 
-  const [pRosieli,  setPRosiele]  = useState(percentualRosieli.toString())
-  const [pPatricia, setPPatricia] = useState(percentualPatricia.toString())
-  const [salvo, setSalvo] = useState(false)
+  const [pRosieli,  setPRosiele]  = useState('')
+  const [pPatricia, setPPatricia] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [salvo,    setSalvo]    = useState(false)
+  const [erro,     setErro]     = useState('')
 
-  function salvar() {
+  // Preencher campos quando os valores carregarem do banco
+  useEffect(() => {
+    if (!carregando) {
+      setPRosiele(percentualRosieli.toString())
+      setPPatricia(percentualPatricia.toString())
+    }
+  }, [carregando, percentualRosieli, percentualPatricia])
+
+  async function handleSalvar() {
     const r = parseFloat(pRosieli)
     const p = parseFloat(pPatricia)
     if (isNaN(r) || r < 0 || r > 100) return
     if (isNaN(p) || p < 0 || p > 100) return
     if (r + p > 100) return
-    setPercentualRosieli(r)
-    setPercentualPatricia(p)
-    setSalvo(true)
-    setTimeout(() => setSalvo(false), 2000)
+
+    setSalvando(true)
+    setErro('')
+    const resultado = await salvar({ percentualRosieli: r, percentualPatricia: p })
+    setSalvando(false)
+
+    if (resultado.ok) {
+      setSalvo(true)
+      setTimeout(() => setSalvo(false), 2000)
+    } else {
+      setErro(resultado.erro ?? 'Erro ao salvar')
+    }
   }
 
   const r = parseFloat(pRosieli)  || 0
   const p = parseFloat(pPatricia) || 0
   const eduardo = Math.max(0, 100 - r - p)
   const exemplos = [500, 1000, 2000, 5000]
+
+  if (carregando) {
+    return (
+      <div className="flex items-center justify-center min-h-full">
+        <p className="text-sm text-gray-400">Carregando...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col min-h-full bg-gray-50">
@@ -114,6 +140,9 @@ export default function ComissaoPage() {
           {r + p > 100 && (
             <p className="text-xs text-red-500">⚠️ A soma ultrapassa 100%. Ajuste os valores.</p>
           )}
+          {erro && (
+            <p className="text-xs text-red-500">⚠️ {erro}</p>
+          )}
         </div>
 
         {/* Simulação */}
@@ -145,14 +174,14 @@ export default function ComissaoPage() {
         )}
 
         <button
-          onClick={salvar}
-          disabled={r + p > 100}
+          onClick={handleSalvar}
+          disabled={r + p > 100 || salvando}
           className={`w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-semibold transition-colors ${
             salvo ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white active:bg-blue-700 disabled:opacity-50'
           }`}
         >
           <Save className="h-4 w-4" />
-          {salvo ? '✓ Salvo!' : 'Salvar configuração'}
+          {salvando ? 'Salvando...' : salvo ? '✓ Salvo!' : 'Salvar configuração'}
         </button>
       </div>
     </div>

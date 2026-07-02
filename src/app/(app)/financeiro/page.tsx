@@ -8,19 +8,13 @@ import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, Trendi
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useFinanceiro, baixarParcela } from '@/lib/hooks/useFinanceiro'
-import { useComissaoStore } from '@/store/comissao.store'
+import { useComissao } from '@/lib/hooks/useComissao'
+import { DENTISTAS as DENTISTAS_CLINICA } from '@/lib/dentistas'
 import { FinanceiroPainel } from '@/components/financeiro/FinanceiroPainel'
 import { ParcelaItem } from '@/components/financeiro/ParcelaItem'
 import { formatarMoeda, formatarData, iniciais } from '@/lib/utils'
 
 type Aba = 'visao_geral' | 'recebimentos' | 'orcamentos' | 'comissao'
-
-// Dentistas fixos — identificados pelo prefixo [key] gravado na descrição dos avulsos
-const DENTISTAS_CLINICA = [
-  { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700' },
-  { key: 'eduardo', nome: 'Drº Eduardo Corteletti', initials: 'EC', cor: 'bg-blue-100 text-blue-700'     },
-  { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700'    },
-]
 
 const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -364,7 +358,7 @@ export default function FinanceiroPage() {
   const { metricas, proximosVencimentos, carregando, recarregar } = useFinanceiro(clinicaId ?? '', mes)
   const { recebimentos, total: totalRecebido, carregando: carregandoRec } = useRecebimentos(clinicaId ?? '', mes)
   const { orcamentos, carregando: carregandoOrc } = useOrcamentosFinanceiro(clinicaId ?? '')
-  const { percentualRosieli, percentualPatricia } = useComissaoStore()
+  const { percentualRosieli, percentualPatricia } = useComissao()
   const { porDentista, carregando: carregandoCom } = useComissaoDentista(clinicaId ?? '', mesCom)
 
   function navMes(dir: -1 | 1) {

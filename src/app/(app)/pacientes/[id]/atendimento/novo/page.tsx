@@ -13,11 +13,9 @@ interface Procedimento {
 }
 
 // Dentistas fixos — não buscar do banco para evitar incluir a secretária
-const DENTISTAS_FIXOS = [
-  { id: 'rosieli', nome: 'Drª Rosieli Hoffmann'   },
-  { id: 'eduardo', nome: 'Drº Eduardo Cortelleti' },
-  { id: 'pamela',  nome: 'Drª Pamela Bolsoni'     },
-]
+import { DENTISTAS } from '@/lib/dentistas'
+// Mapeamento local para manter compatibilidade com a interface que usa .id
+const DENTISTAS_FIXOS = DENTISTAS.map(d => ({ id: d.key, nome: d.nome }))
 
 export default function NovoAtendimentoPage() {
   const { id: pacienteId } = useParams<{ id: string }>()

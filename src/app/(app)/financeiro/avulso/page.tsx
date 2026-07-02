@@ -7,14 +7,7 @@ import { ArrowLeft, ChevronDown, ClipboardList, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { formatarMoeda } from '@/lib/utils'
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
-
-const DENTISTAS = [
-  { key: 'rosieli', nome: 'Drª Rosieli Hoffmann',   initials: 'RH', cor: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { key: 'eduardo', nome: 'Drº Eduardo Corteletti', initials: 'EC', cor: 'bg-blue-100 text-blue-700 border-blue-200'       },
-  { key: 'pamela',  nome: 'Drª Pamela Bolsoni',     initials: 'PB', cor: 'bg-rose-100 text-rose-700 border-rose-200'      },
-]
+import { DENTISTAS } from '@/lib/dentistas'
 
 const FORMAS = [
   { id: 'pix',            label: 'PIX',           emoji: '📱' },

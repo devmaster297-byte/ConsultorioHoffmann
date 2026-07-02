@@ -1,9 +1,7 @@
 // src/lib/exportar-mensal.ts
-// Gera planilha Excel mensal no formato histórico da clínica.
-// Usa SheetJS (xlsx) — adicionar ao package.json: "xlsx": "^0.18.5"
-
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase-browser'
+import { DENTISTAS, DentistaKey, extrairDentistaKey } from '@/lib/dentistas'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -33,11 +31,6 @@ const FORMA_LABEL: Record<string, string> = {
   outros:         'Outros',
 }
 
-// Dentistas reconhecidos — chave deve bater com o prefixo gravado na descrição
-// (ex.: "[eduardo] Proc" ou "[pamela] Proc")
-const DENTISTAS = ['rosieli', 'eduardo', 'pamela'] as const
-type DentistaKey = typeof DENTISTAS[number]
-
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
 interface LinhaExport {
@@ -57,14 +50,6 @@ function limparDescricao(descricao: string): string {
     .replace(/\[orc:[a-f0-9-]{36}\]/g, '')
     .replace(/\[[a-z]+\]/g, '')
     .trim()
-}
-
-function extrairDentista(descricao: string): DentistaKey {
-  const tags = [...descricao.matchAll(/\[([a-z]+)\]/g)]
-  for (const m of tags) {
-    if ((DENTISTAS as readonly string[]).includes(m[1])) return m[1] as DentistaKey
-  }
-  return 'rosieli' // padrão quando não há prefixo
 }
 
 function formatarDataBR(iso: string): string {
@@ -170,7 +155,7 @@ async function buscarDados(clinicaId: string, mes: string): Promise<Record<Denti
   const grupos: Record<DentistaKey, LinhaExport[]> = { rosieli: [], eduardo: [], pamela: [] }
 
   for (const lanc of lancs) {
-    const dentista = extrairDentista(lanc.descricao)
+    const dentista = extrairDentistaKey(lanc.descricao)
     const tratamento = limparDescricao(lanc.descricao)
     const paciente = lanc.paciente_id ? (pacMap[lanc.paciente_id] ?? '—') : '—'
 
@@ -292,19 +277,16 @@ export async function exportarMensal(clinicaId: string, mes: string): Promise<vo
 
   const wb = XLSX.utils.book_new()
 
-  const abasDentistas: Array<{ key: DentistaKey; nomeLong: string; nomeAba: string }> = [
-    { key: 'rosieli', nomeLong: 'Drª Rosieli Hoffmann',   nomeAba: 'Drª Rosieli'  },
-    { key: 'eduardo', nomeLong: 'Drº Eduardo Corteletti', nomeAba: 'Dr. Eduardo'  },
-    { key: 'pamela',  nomeLong: 'Drª Pamela Bolsoni',     nomeAba: 'Drª Pamela'   },
-  ]
-
-  for (const { key, nomeLong, nomeAba } of abasDentistas) {
+  // Abas geradas dinamicamente a partir do central de dentistas
+  for (const d of DENTISTAS) {
     const ws = XLSX.utils.aoa_to_sheet([])
     construirAba(
       ws,
-      `Acompanhamento Pacientes ${tituloMes} — ${nomeLong}`,
-      grupos[key],
+      `Acompanhamento Pacientes ${tituloMes} — ${d.nomeLong}`,
+      grupos[d.key] ?? [],
     )
+    // Nome da aba: "Drª Rosieli" → extrair até 31 chars (limite Excel)
+    const nomeAba = d.nome.replace('Drº ', 'Dr. ').slice(0, 31)
     XLSX.utils.book_append_sheet(wb, ws, nomeAba)
   }
 
