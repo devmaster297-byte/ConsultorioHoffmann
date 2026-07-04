@@ -40,6 +40,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Clínica não encontrada' }, { status: 404 })
   }
 
+  // 4. Rate limiting: máx 10 mensagens por clínica a cada 5 minutos
+  const cincoMinutosAtras = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+  const { count: enviosRecentes } = await supabase
+    .from('mensagens_whatsapp')
+    .select('*', { count: 'exact', head: true })
+    .eq('clinica_id', usuario.clinica_id)
+    .gte('created_at', cincoMinutosAtras)
+
+  if ((enviosRecentes ?? 0) >= 10) {
+    return NextResponse.json(
+      { error: 'Limite de 10 mensagens por 5 minutos atingido. Aguarde antes de continuar.' },
+      { status: 429 }
+    )
+  }
+
+  // 5. Buscar config da Evolution API para a clínica
   const { data: clinica } = await supabase
     .from('clinicas')
     .select('evolution_url, evolution_instance, evolution_apikey')
@@ -53,10 +69,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 4. Formatar número para E.164 sem o +
+  // 6. Formatar número e chamar a Evolution API (server → server, sem CORS)
   const numero = formatarNumero(telefone)
-
-  // 5. Chamar a Evolution API (server → server, sem CORS)
   const endpoint = `${clinica.evolution_url.replace(/\/$/, '')}/message/sendText/${clinica.evolution_instance}`
 
   let respEvolution: Response

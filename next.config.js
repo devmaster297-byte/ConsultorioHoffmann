@@ -49,6 +49,27 @@ const nextConfig = {
       },
     ],
   },
+
+  // ── Headers de segurança ───────────────────────────────────────────────
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          // Impede que o app seja embutido em iframes (clickjacking)
+          { key: 'X-Frame-Options', value: 'DENY' },
+          // Impede que o browser "adivinhe" o Content-Type de respostas
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          // Limita referrer a origem + path ao navegar para sites externos
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Bloqueia câmera, microfone e geolocalização (não usados pelo app)
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // Força HTTPS por 1 ano em browsers que já acessaram o app
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        ],
+      },
+    ]
+  },
 }
 
 module.exports = withPWA(nextConfig)

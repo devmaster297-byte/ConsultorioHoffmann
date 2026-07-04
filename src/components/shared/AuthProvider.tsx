@@ -42,6 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!montado) return
 
         if (usuarioDB) {
+          // Bloquear acesso de usuários desativados
+          if (!usuarioDB.ativo) {
+            await supabase.auth.signOut()
+            setUsuario(null)
+            setCarregando(false)
+            return
+          }
           setUsuario(usuarioDB, email ?? undefined)
         } else {
           setUsuario(null)

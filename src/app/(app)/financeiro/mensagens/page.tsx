@@ -53,19 +53,20 @@ function useCentralMensagens(clinicaId: string) {
     if (!clinicaId) return
     setCarregando(true)
 
-    // Config da clínica + Evolution API
+    // Config da clínica (sem apikey — fica apenas no servidor)
     const { data: clinica } = await supabase
       .from('clinicas')
-      .select('nome, evolution_url, evolution_instance, evolution_apikey')
+      .select('nome, evolution_url, evolution_instance')
       .eq('id', clinicaId)
       .single()
 
     if (clinica?.nome) setNomeClinica(clinica.nome)
-    if (clinica?.evolution_url && clinica?.evolution_instance && clinica?.evolution_apikey) {
+    // config só indica se WhatsApp está configurado — apikey nunca vai ao browser
+    if (clinica?.evolution_url && clinica?.evolution_instance) {
       setConfig({
         url:      clinica.evolution_url,
         instance: clinica.evolution_instance,
-        apikey:   clinica.evolution_apikey,
+        apikey:   '', // não usado — envio passa pela API route do servidor
       })
     }
 
