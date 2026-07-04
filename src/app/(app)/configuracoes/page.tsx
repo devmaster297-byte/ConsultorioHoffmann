@@ -3,15 +3,13 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ClipboardList, Percent, LogOut } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Percent, LogOut, MessageCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
-import { useComissaoStore } from '@/store/comissao.store'
 
 export default function ConfiguracoesPage() {
   const router = useRouter()
   const { setUsuario } = useAuthStore()
-  const { percentualRosieli, percentualPatricia } = useComissaoStore()
 
   async function sair() {
     await supabase.auth.signOut()
@@ -52,15 +50,24 @@ export default function ConfiguracoesPage() {
           <div className="h-9 w-9 rounded-xl bg-emerald-50 flex items-center justify-center">
             <Percent className="h-5 w-5 text-emerald-500" />
           </div>
-          <div className="flex-1">
+          <div>
             <p className="font-medium text-gray-900">Comissão da Secretária</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Rosieli {percentualRosieli}% · Patricia {percentualPatricia}% do bruto do Dr. Eduardo
-            </p>
+            <p className="text-xs text-gray-400 mt-0.5">Percentuais de Rosieli e Patricia</p>
           </div>
-          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-            {percentualPatricia}%
-          </span>
+        </Link>
+
+        {/* WhatsApp */}
+        <Link
+          href="/configuracoes/whatsapp"
+          className="flex items-center gap-3 bg-white rounded-xl px-4 py-4 shadow-sm active:bg-gray-50"
+        >
+          <div className="h-9 w-9 rounded-xl bg-green-50 flex items-center justify-center">
+            <MessageCircle className="h-5 w-5 text-green-500" />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">WhatsApp</p>
+            <p className="text-xs text-gray-400 mt-0.5">Configuração da Evolution API para envio de mensagens</p>
+          </div>
         </Link>
 
         {/* Sair */}

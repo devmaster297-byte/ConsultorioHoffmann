@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, TrendingUp, Percent, Zap, FileSpreadsheet } from 'lucide-react'
+import { Plus, AlertTriangle, ChevronLeft, ChevronRight, Check, Clock, X, TrendingUp, Percent, Zap, FileSpreadsheet, MessageCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useFinanceiro, baixarParcela } from '@/lib/hooks/useFinanceiro'
@@ -479,6 +479,22 @@ export default function FinanceiroPage() {
                 </div>
               </div>
               <span className="text-red-400 text-lg">›</span>
+            </Link>
+
+            <Link
+              href="/financeiro/mensagens"
+              className="flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-4 py-4 active:bg-green-100"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100">
+                  <MessageCircle className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-green-800 text-sm">Central de Mensagens</p>
+                  <p className="text-xs text-green-500">Enviar cobrança via WhatsApp</p>
+                </div>
+              </div>
+              <span className="text-green-500 text-lg">›</span>
             </Link>
 
             <div>
