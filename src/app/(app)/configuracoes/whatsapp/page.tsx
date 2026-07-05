@@ -107,7 +107,15 @@ export default function WhatsAppConfigPage() {
     setConectando(true)
 
     pollingRef.current = setInterval(async () => {
-      const resp = await fetch('/api/whatsapp/test', { method: 'POST' })
+      const resp = await fetch('/api/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url:      url.trim(),
+          instance: instance.trim(),
+          apikey:   apikey.trim(),
+        }),
+      })
       const data = await resp.json().catch(() => ({}))
       if (data.ok) {
         // Conectou!
@@ -133,7 +141,15 @@ export default function WhatsAppConfigPage() {
     setCarregandoQr(true)
     setConectando(false)
 
-    const resp = await fetch('/api/whatsapp/qrcode')
+    const resp = await fetch('/api/whatsapp/qrcode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url:      url.trim(),
+        instance: instance.trim(),
+        apikey:   apikey.trim(),
+      }),
+    })
     const data = await resp.json().catch(() => ({}))
     setCarregandoQr(false)
 

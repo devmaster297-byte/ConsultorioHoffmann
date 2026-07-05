@@ -1,54 +1,33 @@
 // src/app/api/whatsapp/qrcode/route.ts
 // Busca o QR code de conexão da instância Evolution API.
-// A chamada é feita server-side para não expor a apikey no browser.
-// O QR code expira em ~60 segundos — o cliente pode chamar novamente para regenerar.
+// Aceita a config no body para não depender de cookies de sessão,
+// que podem falhar em rotas de API dependendo da configuração do middleware.
 
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET() {
-  // 1. Autenticar
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+export async function POST(req: NextRequest) {
+  // Receber config diretamente do body — o cliente já tem esses valores
+  // (vieram do banco via supabase-browser autenticado normalmente)
+  let body: { url?: string; instance?: string; apikey?: string } = {}
+  try { body = await req.json() } catch {}
 
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
+  const { url, instance, apikey } = body
 
-  // 2. Buscar clinica_id do usuário
-  const { data: usuario } = await supabase
-    .from('usuarios')
-    .select('clinica_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!usuario?.clinica_id) {
-    return NextResponse.json({ error: 'Clínica não encontrada' }, { status: 404 })
-  }
-
-  // 3. Buscar config da Evolution API
-  const { data: clinica } = await supabase
-    .from('clinicas')
-    .select('evolution_url, evolution_instance, evolution_apikey')
-    .eq('id', usuario.clinica_id)
-    .single()
-
-  if (!clinica?.evolution_url || !clinica?.evolution_instance || !clinica?.evolution_apikey) {
+  if (!url || !instance || !apikey) {
     return NextResponse.json(
-      { error: 'WhatsApp não configurado. Preencha a URL, instância e API key primeiro.' },
+      { error: 'Preencha e salve a URL, instância e API key antes de gerar o QR code.' },
       { status: 422 }
     )
   }
 
-  // 4. Chamar Evolution API — endpoint de conexão/QR code
-  const endpoint = `${clinica.evolution_url.replace(/\/$/, '')}/instance/connect/${clinica.evolution_instance}`
+  // Chamar Evolution API — endpoint de conexão/QR code
+  const endpoint = `${url.replace(/\/$/, '')}/instance/connect/${instance}`
 
   let resp: Response
   try {
     resp = await fetch(endpoint, {
       method: 'GET',
-      headers: { apikey: clinica.evolution_apikey },
-      // QR code requests podem demorar alguns segundos
+      headers: { apikey },
       signal: AbortSignal.timeout(15_000),
     })
   } catch (err) {
@@ -69,10 +48,7 @@ export async function GET() {
 
   const data = await resp.json().catch(() => ({}))
 
-  // A Evolution API pode retornar o base64 em diferentes formatos dependendo da versão:
-  // v1: { base64: "data:image/png;base64,..." }
-  // v2: { qrcode: { base64: "data:image/png;base64,..." }, code: "..." }
-  // Normalizamos para sempre retornar { base64: "..." }
+  // Normalizar o base64 — a Evolution API retorna em formatos diferentes por versão
   const base64 =
     data?.base64 ||
     data?.qrcode?.base64 ||
@@ -80,7 +56,6 @@ export async function GET() {
     null
 
   if (!base64) {
-    // Se não veio QR code, a instância pode já estar conectada
     const state = data?.instance?.state ?? data?.state ?? ''
     if (state === 'open') {
       return NextResponse.json({ conectado: true })
@@ -91,8 +66,6 @@ export async function GET() {
     )
   }
 
-  // Garantir que o base64 tem o prefixo de data URL
   const qrBase64 = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
-
   return NextResponse.json({ base64: qrBase64 })
 }
