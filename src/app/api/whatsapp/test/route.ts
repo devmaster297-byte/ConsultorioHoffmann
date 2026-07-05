@@ -1,32 +1,35 @@
 // src/app/api/whatsapp/test/route.ts
 // Testa a conexão com a Evolution API verificando o status da instância.
-// Também usado pela página de configuração para validar os dados antes de salvar.
+// Dois modos:
+//   1. Config no body → testa diretamente sem auth (usado na tela de configuração)
+//   2. Sem config no body → lê do banco (exige auth, usado pelo polling da tela de QR)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
-  // 1. Autenticar
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
-
-  // 2. Aceitar config do body (para testar antes de salvar) OU ler do banco
-  let url: string, instance: string, apikey: string
-
   let body: { url?: string; instance?: string; apikey?: string } = {}
   try { body = await req.json() } catch {}
 
+  let url: string, instance: string, apikey: string
+
   if (body.url && body.instance && body.apikey) {
-    // Teste com config passada no body (tela de configuração)
+    // ── Modo 1: config passada no body (teste da tela de configuração) ──
+    // Não exige autenticação pois não acessa o banco — apenas testa
+    // a conectividade com o servidor da Evolution API.
     url      = body.url.trim()
     instance = body.instance.trim()
     apikey   = body.apikey.trim()
   } else {
-    // Lê do banco (para testar config já salva)
+    // ── Modo 2: lê config do banco (polling após gerar QR) ──
+    // Aqui sim exige autenticação pois acessa a tabela clinicas.
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+
     const { data: usuario } = await supabase
       .from('usuarios')
       .select('clinica_id')
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
     apikey   = clinica.evolution_apikey
   }
 
-  // 3. Consultar estado da instância na Evolution API
+  // Consultar estado da instância na Evolution API
   const endpoint = `${url.replace(/\/$/, '')}/instance/connectionState/${instance}`
 
   let resp: Response
@@ -56,19 +59,20 @@ export async function POST(req: NextRequest) {
     resp = await fetch(endpoint, {
       method: 'GET',
       headers: { apikey },
+      signal: AbortSignal.timeout(10_000),
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json(
       { ok: false, erro: `Falha ao conectar: ${msg}` },
-      { status: 502 }
+      { status: 200 }
     )
   }
 
   if (!resp.ok) {
     return NextResponse.json(
       { ok: false, erro: `HTTP ${resp.status} — verifique a URL e o nome da instância` },
-      { status: 200 }   // 200 para o cliente processar o erro de negócio
+      { status: 200 }
     )
   }
 
@@ -80,13 +84,13 @@ export async function POST(req: NextRequest) {
   }
 
   const erros: Record<string, string> = {
-    close:      'Instância desconectada — escaneie o QR code novamente',
+    close:      'Instância desconectada — gere um QR code para reconectar',
     connecting: 'Instância conectando — aguarde alguns segundos e tente de novo',
     qr:         'Aguardando leitura do QR code no WhatsApp',
   }
 
   return NextResponse.json({
     ok: false,
-    erro: erros[state] ?? `Estado desconhecido: ${state || 'sem resposta'}`,
+    erro: erros[state] ?? `Estado: ${state || 'sem resposta da instância'}`,
   })
 }
