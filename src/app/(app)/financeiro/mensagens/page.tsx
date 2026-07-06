@@ -53,20 +53,20 @@ function useCentralMensagens(clinicaId: string) {
     if (!clinicaId) return
     setCarregando(true)
 
-    // Config da clínica (sem apikey — fica apenas no servidor)
+    // Config da clínica (apikey incluída — lida aqui pelo cliente autenticado
+    // e usada apenas para passar para a API route via HTTPS, nunca exposta em UI)
     const { data: clinica } = await supabase
       .from('clinicas')
-      .select('nome, evolution_url, evolution_instance')
+      .select('nome, evolution_url, evolution_instance, evolution_apikey')
       .eq('id', clinicaId)
       .single()
 
     if (clinica?.nome) setNomeClinica(clinica.nome)
-    // config só indica se WhatsApp está configurado — apikey nunca vai ao browser
-    if (clinica?.evolution_url && clinica?.evolution_instance) {
+    if (clinica?.evolution_url && clinica?.evolution_instance && clinica?.evolution_apikey) {
       setConfig({
         url:      clinica.evolution_url,
         instance: clinica.evolution_instance,
-        apikey:   '', // não usado — envio passa pela API route do servidor
+        apikey:   clinica.evolution_apikey,
       })
     }
 
@@ -216,9 +216,10 @@ function ModalEnvio({
     if (!texto.trim()) return
     setEnviando(true); setErro('')
 
+    // Enviar via API route (server-side para não expor apikey ao Evolution API diretamente)
     const resultado = await enviarMensagemWhatsApp(config, paciente.telefone!, texto)
 
-    // Gravar no histórico independente do resultado
+    // Registrar no histórico direto do cliente (supabase-browser tem sessão ativa)
     await supabase.from('mensagens_whatsapp').insert({
       clinica_id:    clinicaId,
       paciente_id:   paciente.paciente_id,

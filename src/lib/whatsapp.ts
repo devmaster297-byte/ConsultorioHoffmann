@@ -33,14 +33,11 @@ export function formatarNumeroWhatsApp(telefone: string): string {
 
 /**
  * Envia uma mensagem de texto via proxy server-side (/api/whatsapp/send).
- * A chamada real à Evolution API é feita pelo servidor Next.js, evitando
- * erros de CORS e mantendo a API key fora do browser.
- *
- * O parâmetro `config` é mantido na assinatura para compatibilidade, mas
- * não é mais usado aqui — a rota busca a config direto do banco.
+ * Passa a config no body — padrão consistente com /api/whatsapp/test e /qrcode.
+ * A chamada real à Evolution API é feita pelo servidor Next.js, evitando CORS.
  */
 export async function enviarMensagemWhatsApp(
-  _config: ConfigWhatsApp,
+  config: ConfigWhatsApp,
   telefone: string,
   mensagem: string,
 ): Promise<ResultadoEnvio> {
@@ -48,7 +45,13 @@ export async function enviarMensagemWhatsApp(
     const resp = await fetch('/api/whatsapp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telefone, mensagem }),
+      body: JSON.stringify({
+        url:      config.url,
+        instance: config.instance,
+        apikey:   config.apikey,
+        telefone,
+        mensagem,
+      }),
     })
 
     const data = await resp.json().catch(() => ({}))
