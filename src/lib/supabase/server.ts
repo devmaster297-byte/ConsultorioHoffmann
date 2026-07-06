@@ -9,6 +9,10 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      auth: {
+        // ESSENCIAL: Deve ser exatamente igual ao configurado no client.ts
+        storageKey: 'hoffmann-supabase-session', 
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll()
