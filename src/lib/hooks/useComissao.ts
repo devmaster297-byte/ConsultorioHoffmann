@@ -1,7 +1,5 @@
 // src/lib/hooks/useComissao.ts
 // Lê e salva os percentuais de comissão diretamente na tabela `clinicas`.
-// Substitui o comissao.store.ts (que usava localStorage e era perdido ao
-// trocar de dispositivo).
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase-browser'
