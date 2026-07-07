@@ -27,6 +27,9 @@ export default function PacientesPage() {
   const offsetRef = useRef(0)
   const carregandoMaisRef = useRef(false)
   const temMaisRef = useRef(false)
+  // Ref do container rolável — necessário para o IntersectionObserver funcionar
+  // dentro de um div com overflow-y-auto (não rola no window, rola no container)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const carregar = useCallback(
     async (query: string, offsetAtual: number, append: boolean) => {
@@ -90,7 +93,8 @@ export default function PacientesPage() {
 
   useEffect(() => {
     const sentinel = sentinelRef.current
-    if (!sentinel) return
+    const container = containerRef.current
+    if (!sentinel || !container) return
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -102,7 +106,10 @@ export default function PacientesPage() {
           carregar(buscaRef.current, offsetRef.current, true)
         }
       },
-      { rootMargin: '300px' }
+      {
+        root: container,       // ← observar dentro do div rolável, não no window
+        rootMargin: '300px',
+      }
     )
 
     observer.observe(sentinel)
@@ -161,7 +168,7 @@ export default function PacientesPage() {
       </div>
 
       {/* Lista */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-4 pb-4">
         {carregando ? (
           <div className="space-y-3 mt-2">
             {[...Array(6)].map((_, i) => (

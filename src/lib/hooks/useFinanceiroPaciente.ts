@@ -277,13 +277,23 @@ export async function registrarPagamentoPaciente(
 
 // ─── Excluir Pagamento ────────────────────────────────────────────────────────
 // Marca a parcela como cancelada (soft delete) — preserva o histórico financeiro
-// e evita lacunas na sequência de numeros que causariam falha no próximo registro
+// e evita lacunas na sequência de numeros que causariam falha no próximo registro.
+// Se todas as parcelas do lançamento ficarem canceladas (sem nenhuma paga),
+// o lançamento é deletado — evita o "fantasma financeiro" da Raiane.
 
 export async function excluirPagamentoParcela(
   parcelaId: string
 ): Promise<{ sucesso: boolean; erro?: string }> {
   const supabase = createClient()
 
+  // 1. Buscar o lancamento_id antes de cancelar
+  const { data: parcelaAtual } = await supabase
+    .from('financeiro_parcelas')
+    .select('lancamento_id')
+    .eq('id', parcelaId)
+    .single()
+
+  // 2. Marcar como cancelada
   const { error } = await supabase
     .from('financeiro_parcelas')
     .update({
@@ -294,5 +304,33 @@ export async function excluirPagamentoParcela(
     .eq('id', parcelaId)
 
   if (error) return { sucesso: false, erro: 'Erro ao excluir pagamento' }
+
+  // 3. Verificar se o lançamento ficou sem nenhuma parcela paga
+  //    (todas canceladas ou nenhuma) → deletar para não criar fantasmas
+  if (parcelaAtual?.lancamento_id) {
+    const lancId = parcelaAtual.lancamento_id
+
+    const { data: restantes } = await supabase
+      .from('financeiro_parcelas')
+      .select('status')
+      .eq('lancamento_id', lancId)
+
+    const todas = (restantes ?? []) as { status: string }[]
+    const temPaga = todas.some(p => p.status === 'pago' || p.status === 'pago_parcial')
+
+    if (!temPaga) {
+      // Nenhuma parcela paga restante — deletar parcelas e lançamento
+      await supabase
+        .from('financeiro_parcelas')
+        .delete()
+        .eq('lancamento_id', lancId)
+
+      await supabase
+        .from('financeiro_lancamentos')
+        .delete()
+        .eq('id', lancId)
+    }
+  }
+
   return { sucesso: true }
 }

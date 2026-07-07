@@ -468,7 +468,16 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
         forma_pagamento: string | null
       }>
 
+      // Rastrear quais lançamentos têm ao menos uma parcela NÃO-cancelada
+      // (ou seja, tiveram atividade financeira real). Lançamentos onde TODAS
+      // as parcelas são 'cancelado' são exercícios de treinamento / entradas
+      // errôneas — não devem entrar no cálculo de saldo (caso Raiane).
+      const lancComAtividade = new Set<string>()
+
       parcelasDB.forEach((p) => {
+        if (p.status !== 'cancelado') {
+          lancComAtividade.add(p.lancamento_id)
+        }
         if (p.status === 'pago' || p.status === 'pago_parcial') {
           lancPagoMap[p.lancamento_id] = (lancPagoMap[p.lancamento_id] ?? 0) + (p.valor_pago ?? 0)
           if (p.data_pagamento) {
@@ -483,6 +492,15 @@ export function FinanceiroAba({ pacienteId, clinicaId }: { pacienteId: string; c
           }
         }
       })
+
+      // Remover de lancPorOrcId os lançamentos puramente cancelados
+      // (sem nenhuma parcela com status diferente de 'cancelado')
+      for (const orcId of Object.keys(lancPorOrcId)) {
+        const lancId = lancPorOrcId[orcId].id
+        if (!lancComAtividade.has(lancId)) {
+          delete lancPorOrcId[orcId]
+        }
+      }
     }
 
     // Cruzar orçamentos com saldo (usando mapa por ID do orçamento)
