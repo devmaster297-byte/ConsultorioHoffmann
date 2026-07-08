@@ -7,7 +7,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import {
   ArrowLeft, Phone, Plus, FileText,
-  Edit2, ClipboardList,
+  Edit2, ClipboardList, MessageCircle, Send, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase-browser'
 import { Paciente } from '@/lib/supabase/types'
@@ -20,6 +20,7 @@ import { FinanceiroAba } from './financeiro/FinanceiroAba'
 import { RadiografiasAba } from './radiografias/RadiografiasAba'
 import { iniciais, formatarTelefone, formatarMoeda } from '@/lib/utils'
 import { useResumoFinanceiroPaciente } from '@/lib/hooks/useResumoFinanceiroPaciente'
+import { enviarMensagemWhatsApp, templateCobranca, templateLembrete, ConfigWhatsApp } from '@/lib/whatsapp'
 
 type Aba = 'historico' | 'financeiro' | 'radiografias'
 
@@ -32,13 +33,21 @@ const ABA_CONFIG: { key: Aba; label: string }[] = [
 export default function FichaPacientePage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { clinicaId } = useAuthStore()
+  const { clinicaId, usuario } = useAuthStore()
 
   const [abaAtiva, setAbaAtiva] = useState<Aba>('historico')
   const [paciente, setPaciente] = useState<Paciente | null>(null)
   const [status, setStatus] = useState<StatusFinanceiro>('em_dia')
   const [carregandoPaciente, setCarregandoPaciente] = useState(true)
   const [erroCarregar, setErroCarregar] = useState<string | null>(null)
+
+  // Modal WhatsApp
+  const [modalWpp, setModalWpp]       = useState(false)
+  const [wppTexto, setWppTexto]       = useState('')
+  const [wppEnviando, setWppEnviando] = useState(false)
+  const [wppErro, setWppErro]         = useState('')
+  const [wppSucesso, setWppSucesso]   = useState(false)
+  const [wppConfig, setWppConfig]     = useState<ConfigWhatsApp | null>(null)
 
   // Lazy: só monta a aba quando aberta pela primeira vez
   const [abasAbertas, setAbasAbertas] = useState<Set<Aba>>(new Set(['historico']))
@@ -69,6 +78,64 @@ export default function FichaPacientePage() {
   }, [id, clinicaId, router])
 
   useEffect(() => { carregarPaciente() }, [carregarPaciente])
+
+  // Buscar config do WhatsApp em paralelo (para o botão de mensagem)
+  useEffect(() => {
+    if (!clinicaId) return
+    supabase
+      .from('clinicas')
+      .select('evolution_url, evolution_instance, evolution_apikey')
+      .eq('id', clinicaId)
+      .single()
+      .then(({ data }) => {
+        if (data?.evolution_url && data?.evolution_instance && data?.evolution_apikey) {
+          setWppConfig({
+            url:      data.evolution_url,
+            instance: data.evolution_instance,
+            apikey:   data.evolution_apikey,
+          })
+        }
+      })
+  }, [clinicaId])
+
+  function abrirModalWpp() {
+    if (!paciente) return
+    const saldo = resumoFin.saldoDevedor ?? 0
+    setWppTexto(
+      saldo > 0
+        ? templateCobranca({ nomePaciente: paciente.nome, saldo })
+        : templateLembrete({ nomePaciente: paciente.nome })
+    )
+    setWppErro('')
+    setWppSucesso(false)
+    setModalWpp(true)
+  }
+
+  async function enviarWpp() {
+    if (!paciente?.telefone || !wppTexto.trim() || !wppConfig) return
+    setWppEnviando(true); setWppErro('')
+
+    const resultado = await enviarMensagemWhatsApp(wppConfig, paciente.telefone, wppTexto)
+
+    await supabase.from('mensagens_whatsapp').insert({
+      clinica_id:    clinicaId,
+      paciente_id:   paciente.id,
+      paciente_nome: paciente.nome,
+      telefone:      paciente.telefone,
+      mensagem:      wppTexto,
+      status:        resultado.ok ? 'enviada' : 'erro',
+      erro_msg:      resultado.ok ? null : (resultado.erro ?? null),
+      enviada_por:   usuario?.nome ?? 'Usuário',
+    })
+
+    setWppEnviando(false)
+    if (resultado.ok) {
+      setWppSucesso(true)
+      setTimeout(() => setModalWpp(false), 1800)
+    } else {
+      setWppErro(resultado.erro ?? 'Erro ao enviar mensagem.')
+    }
+  }
 
   const { atendimentos, carregando: carregandoAtend } = useAtendimentos(id ?? '', clinicaId ?? '')
   const resumoFin = useResumoFinanceiroPaciente(id ?? '', clinicaId ?? '')
@@ -125,12 +192,24 @@ export default function FichaPacientePage() {
           <div className="flex-1 min-w-0">
             <StatusBadge status={status} />
             {paciente.telefone && (
-              <a href={`tel:${paciente.telefone}`}
-                className="flex items-center gap-1 text-sm text-gray-600 mt-1.5"
-              >
-                <Phone className="h-3.5 w-3.5 flex-shrink-0" />
-                {formatarTelefone(paciente.telefone)}
-              </a>
+              <div className="flex items-center gap-2 mt-1.5">
+                <a href={`tel:${paciente.telefone}`}
+                  className="flex items-center gap-1 text-sm text-gray-600"
+                >
+                  <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                  {formatarTelefone(paciente.telefone)}
+                </a>
+                {wppConfig && (
+                  <button
+                    onClick={abrirModalWpp}
+                    className="flex items-center gap-1 rounded-lg bg-green-500 px-2 py-0.5 text-white active:bg-green-600"
+                    title="Enviar mensagem WhatsApp"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    <span className="text-xs font-medium">WPP</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -219,6 +298,61 @@ export default function FichaPacientePage() {
           )}
         </div>
       </div>
+
+      {/* Modal WhatsApp */}
+      {modalWpp && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/40" onClick={() => setModalWpp(false)}>
+          <div className="mt-auto bg-white rounded-t-3xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-gray-200" />
+            </div>
+            <div className="px-4 pb-8 pt-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-gray-900">{paciente?.nome}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{paciente?.telefone}</p>
+                </div>
+                <button onClick={() => setModalWpp(false)} className="p-2 rounded-xl text-gray-400 active:bg-gray-100">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Mensagem (editável)
+                </label>
+                <textarea
+                  value={wppTexto}
+                  onChange={e => setWppTexto(e.target.value)}
+                  rows={7}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm resize-none leading-relaxed"
+                />
+              </div>
+              {wppErro && (
+                <div className="rounded-xl bg-red-50 px-3 py-2.5">
+                  <p className="text-sm text-red-700">{wppErro}</p>
+                </div>
+              )}
+              {wppSucesso ? (
+                <div className="rounded-xl bg-green-50 px-3 py-2.5 text-center">
+                  <p className="text-sm text-green-700 font-semibold">✓ Mensagem enviada!</p>
+                </div>
+              ) : (
+                <button
+                  onClick={enviarWpp}
+                  disabled={wppEnviando || !wppTexto.trim()}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl bg-green-600 py-4 text-white text-sm font-semibold active:bg-green-700 disabled:opacity-40"
+                >
+                  {wppEnviando
+                    ? <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <Send className="h-4 w-4" />
+                  }
+                  {wppEnviando ? 'Enviando...' : 'Enviar via WhatsApp'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
