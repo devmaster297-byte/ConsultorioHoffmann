@@ -272,6 +272,12 @@ export async function registrarPagamentoPaciente(
 
   if (error) return { sucesso: false, erro: 'Erro ao registrar pagamento' }
 
+  // Mantém num_parcelas em sincronia com a contagem real de parcelas do lançamento
+  await supabase
+    .from('financeiro_lancamentos')
+    .update({ num_parcelas: proximoNumero })
+    .eq('id', input.lancamentoId)
+
   return { sucesso: true }
 }
 

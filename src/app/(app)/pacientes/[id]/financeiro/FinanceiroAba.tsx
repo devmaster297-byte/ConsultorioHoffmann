@@ -150,6 +150,7 @@ function ModalRegistrarPagamento({
         clinica_id: clinicaId,
         paciente_id: pacienteId,
         tipo: 'receita',
+        orcamento_id: orcamento.id,
         descricao: descricaoCompleta,
         valor_total: orcamento.valor_total,
         num_parcelas: 1,

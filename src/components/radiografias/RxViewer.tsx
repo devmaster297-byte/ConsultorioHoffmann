@@ -16,7 +16,7 @@ import {
 import { RadiografiaComUrl } from '@/lib/hooks/useRadiografias'
 import { formatarData } from '@/lib/utils'
 
-const TIPO_LABEL = {
+const TIPO_LABEL: Record<string, string> = {
   periapical: 'Periapical',
   panoramico: 'Panorâmico',
   outro: 'Outro',

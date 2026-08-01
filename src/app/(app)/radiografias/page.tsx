@@ -74,6 +74,7 @@ export default function RadiografiasGlobalPage() {
             atendimento_id: rx.atendimento_id,
             storage_path: rx.storage_path,
             thumbnail_path: rx.thumbnail_path,
+            arquivo_url: null,
             anotacao: rx.anotacao,
             tipo: rx.tipo as any,
             data_exame: rx.data_exame,
@@ -131,7 +132,7 @@ export default function RadiografiasGlobalPage() {
   }
 
   const grupos = rxs.reduce<Record<string, RxComPaciente[]>>((acc, rx) => {
-    const chave = rx.created_at.slice(0, 7)
+    const chave = rx.created_at ? rx.created_at.slice(0, 7) : 'sem-data'
     if (!acc[chave]) acc[chave] = []
     acc[chave].push(rx)
     return acc

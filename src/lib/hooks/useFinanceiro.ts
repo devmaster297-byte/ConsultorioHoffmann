@@ -24,8 +24,7 @@ interface ParcelaRow {
   data_vencimento: string
   data_pagamento: string | null
   status: 'pendente' | 'pago' | 'pago_parcial' | 'vencido' | 'cancelado'
-  created_at: string
-  updated_at: string
+  forma_pagamento: string | null
 }
 
 interface PacienteRow {
@@ -429,6 +428,7 @@ export function useInadimplentes(clinicaId: string) {
           data_vencimento: s.criado_em.split('T')[0],
           data_pagamento: null,
           status: 'pendente',
+          forma_pagamento: null,
           lancamento: {
             id: '',
             descricao: 'Orçamento aprovado aguardando pagamento',
@@ -560,6 +560,7 @@ export async function criarLancamento(
       clinica_id: input.clinicaId,
       paciente_id: input.pacienteId ?? null,
       atendimento_id: input.atendimentoId ?? null,
+      orcamento_id: input.orcamentoId ?? null,
       tipo: input.tipo,
       descricao: input.descricao,
       valor_total: input.valorTotal,
