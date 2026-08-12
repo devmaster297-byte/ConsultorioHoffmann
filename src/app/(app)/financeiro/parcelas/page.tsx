@@ -40,26 +40,12 @@ export default function ParcelasPage() {
     setCarregando(true)
 
 
-    // Buscar IDs dos lançamentos da clínica
-    const { data: lancamentosRaw } = await supabase
-      .from('financeiro_lancamentos')
-      .select('id')
-      .eq('clinica_id', clinicaId)
-
-    const lancamentos = (lancamentosRaw || []) as { id: string }[]
-    const lancIds = lancamentos.map((l) => l.id) // Corrigido: l agora tem tipo
-    
-    if (lancIds.length === 0) {
-      setParcelas([])
-      setCarregando(false)
-      return
-    }
-
+    // Buscar parcelas direto por clinica_id (sem passar por .in() de lançamentos —
+    // com centenas de lançamentos isso gera uma URL enorme e o PostgREST retorna 400).
     let req = supabase
       .from('financeiro_parcelas')
       .select('*')
       .eq('clinica_id', clinicaId)
-      .in('lancamento_id', lancIds)
       .order('data_vencimento', { ascending: false })
       .limit(100)
 
