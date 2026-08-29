@@ -198,56 +198,37 @@ export async function registrarPagamentoPaciente(
     .filter((p) => p.status === 'pago')
     .reduce((acc, p) => acc + (p.valor_pago ?? p.valor), 0)
 
-  // Valor total do lançamento (inclui descricao para extrair orc_id se necessário)
+  // Valor total do lançamento. Não precisa mais extrair orc_id da descrição
+  // nem recalcular nada aqui: o gatilho no banco (fn_calcular_valor_lancamento_orcamento
+  // / fn_propagar_valor_itens_orcamento) mantém valor_total sempre igual à soma
+  // de orcamento_itens, tanto na criação do lançamento quanto quando o orçamento
+  // muda depois. Antes, essa correção só acontecia aqui dentro, escondida, e só
+  // quando o saldo já parecia zerado — foi exatamente isso que mascarou a causa
+  // raiz do caso do Valdivino.
   const { data: lancRaw } = await supabase
     .from('financeiro_lancamentos')
-    .select('valor_total, descricao')
+    .select('valor_total')
     .eq('id', input.lancamentoId)
     .single()
 
-  const lancamento = lancRaw as { valor_total: number; descricao: string } | null
-  let valorTotal = lancamento?.valor_total ?? 0
-  let saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
-
-  // ── Autocorreção: lançamento "pago" mas orçamento tem saldo restante ──────
-  // Ocorre quando o lançamento foi criado com valor_total menor que o orçamento.
-  // O valor real do orçamento é a soma dos itens em orcamento_itens.
-  // Corrige o valor_total do lançamento silenciosamente antes de prosseguir.
-  if (saldoDisponivel <= 0 && lancamento?.descricao) {
-    const matchOrc = lancamento.descricao.match(/\[orc:([a-f0-9-]+)\]/i)
-    if (matchOrc) {
-      const orcId = matchOrc[1]
-
-      // Soma os itens do orçamento para obter o valor real
-      const { data: itensRaw } = await supabase
-        .from('orcamento_itens')
-        .select('valor')
-        .eq('orcamento_id', orcId)
-
-      const valorOrcamento = (itensRaw ?? []).reduce(
-        (acc, item) => acc + ((item as { valor: number }).valor ?? 0),
-        0
-      )
-
-      if (valorOrcamento > totalJaPago) {
-        // Corrige o valor_total do lançamento para bater com o orçamento
-        await supabase
-          .from('financeiro_lancamentos')
-          .update({ valor_total: Number(valorOrcamento.toFixed(2)) })
-          .eq('id', input.lancamentoId)
-
-        valorTotal = valorOrcamento
-        saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
-      }
-    }
-  }
+  const lancamento = lancRaw as { valor_total: number } | null
+  const valorTotal = lancamento?.valor_total ?? 0
+  const saldoDisponivel = Math.max(0, valorTotal - totalJaPago)
 
   if (saldoDisponivel <= 0) {
     return { sucesso: false, erro: 'Este lançamento já está totalmente pago' }
   }
 
-  // Valor a registrar — limita ao saldo disponível
-  const valorRegistrar = Math.min(input.valor, saldoDisponivel)
+  // Nunca trunca o valor em silêncio: se pedirem mais que o saldo disponível,
+  // recusa e avisa. Antes, Math.min(input.valor, saldoDisponivel) aceitava o
+  // pagamento e descartava a diferença sem erro nenhum — foi isso que fez o
+  // pagamento de R$600 do Valdivino virar R$450 registrado sem ninguém notar.
+  if (input.valor > saldoDisponivel + 0.01) {
+    return {
+      sucesso: false,
+      erro: `Valor maior que o saldo pendente (${saldoDisponivel.toFixed(2)}). Nada foi registrado — confira o valor.`,
+    }
+  }
 
   // Próximo número de parcela — usa o maior numero existente + 1 para evitar
   // colisão de unique constraint quando parcelas anteriores foram canceladas
@@ -262,8 +243,8 @@ export async function registrarPagamentoPaciente(
       lancamento_id:   input.lancamentoId,
       clinica_id:      input.clinicaId,
       numero:          proximoNumero,
-      valor:           Number(valorRegistrar.toFixed(2)),
-      valor_pago:      Number(valorRegistrar.toFixed(2)),
+      valor:           Number(input.valor.toFixed(2)),
+      valor_pago:      Number(input.valor.toFixed(2)),
       data_vencimento: input.dataPagamento,
       data_pagamento:  input.dataPagamento,
       status:          'pago',
