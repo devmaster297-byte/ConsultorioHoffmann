@@ -8,6 +8,7 @@ import { Users, History, Scan, DollarSign, Settings, Search, X } from 'lucide-re
 import { supabase } from '@/lib/supabase-browser'
 import { useAuthStore } from '@/store/auth.store'
 import { useVencidosCount } from '@/lib/hooks/useVencidosCount'
+import { ReleaseNotesModal } from '@/components/shared/ReleaseNotesModal'
 
 const NAV = [
   { href: '/pacientes',     icon: Users,      label: 'Pacientes'  },
@@ -198,6 +199,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </nav>
 
       {buscaAberta && <BuscaGlobal onFechar={() => setBuscaAberta(false)} />}
+      <ReleaseNotesModal />
     </div>
   )
 }
