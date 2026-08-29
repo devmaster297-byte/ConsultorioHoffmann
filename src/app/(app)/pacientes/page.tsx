@@ -114,7 +114,13 @@ export default function PacientesPage() {
 
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [carregar])
+    // carregando entra aqui de propósito: no primeiro render o sentinela ainda
+    // não existe (a tela mostra o skeleton), então esse efeito roda e sai sem
+    // fazer nada. Sem "carregando" na lista de dependências, ele nunca mais
+    // rodava de novo — o observer nunca chegava a existir, e a rolagem
+    // infinita nunca disparava. Precisa rodar de novo assim que o
+    // carregamento inicial termina, que é quando o sentinela passa a existir.
+  }, [carregar, carregando])
 
   // Busca com debounce
   // eslint-disable-next-line react-hooks/exhaustive-deps
