@@ -117,19 +117,42 @@ function ModalRegistrarPagamento({
   async function getOuCriarLancamento(): Promise<string | null> {
     const prefixo = ORC_PREFIX(orcamento.id)
 
-    const { data: existente } = await supabase
+    // Busca primeiro pela FK orcamento_id — ela é preenchida por QUALQUER
+    // fluxo que cria lançamento (parcelamento formal em /financeiro/lancamento,
+    // avulso, este daqui), então acha um lançamento independente de qual tela
+    // o criou. Antes, essa busca olhava só o texto da descrição, e por isso
+    // não enxergava lançamento criado por outro fluxo — criava um segundo do
+    // zero. Só cai pra busca por texto em registros antigos, de antes da FK
+    // existir.
+    const { data: porFk } = await supabase
       .from('financeiro_lancamentos')
       .select('id')
       .eq('clinica_id', clinicaId)
       .eq('paciente_id', pacienteId)
       .eq('tipo', 'receita')
-      .ilike('descricao', `${prefixo}%`)
+      .eq('orcamento_id', orcamento.id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
+    let existente = porFk as { id: string } | null
+
+    if (!existente) {
+      const { data: porDescricao } = await supabase
+        .from('financeiro_lancamentos')
+        .select('id')
+        .eq('clinica_id', clinicaId)
+        .eq('paciente_id', pacienteId)
+        .eq('tipo', 'receita')
+        .ilike('descricao', `${prefixo}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      existente = porDescricao as { id: string } | null
+    }
+
     if (existente) {
-      const lancId = (existente as { id: string; descricao?: string } & Record<string, unknown>).id
+      const lancId = existente.id
       // Atualizar descrição para incluir prefixo do dentista, se não tiver
       const { data: lancAtual } = await supabase
         .from('financeiro_lancamentos').select('descricao').eq('id', lancId).single()
